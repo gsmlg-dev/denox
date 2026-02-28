@@ -1,0 +1,23 @@
+/_build/
+/deps/
+/doc/
+/.fetch
+erl_crash.dump
+*.ez
+denox-*.tar
+/tmp/
+/.elixir_ls/
+
+# Native NIF build artifacts
+/native/denox_nif/target/
+/priv/native/
+
+# Denox runtime artifacts
+/_denox/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
