@@ -7,6 +7,7 @@ use std::sync::mpsc;
 enum Command {
     Eval {
         code: String,
+        transpile: bool,
         reply: mpsc::Sender<Result<String, String>>,
     },
 }
@@ -20,10 +21,53 @@ struct RuntimeResource {
 unsafe impl Send for RuntimeResource {}
 unsafe impl Sync for RuntimeResource {}
 
+/// Transpile TypeScript to JavaScript using deno_ast (swc).
+/// Strips type annotations without type-checking.
+fn transpile_inline(ts_code: &str) -> Result<String, String> {
+    use deno_ast::MediaType;
+    use deno_ast::ParseParams;
+    use deno_ast::SourceMapOption;
+    use deno_ast::TranspileOptions;
+    use deno_ast::TranspileModuleOptions;
+    use deno_ast::EmitOptions;
+
+    let specifier = deno_core::url::Url::parse("file:///denox_inline.ts")
+        .map_err(|e| format!("URL parse error: {}", e))?;
+
+    let parsed = deno_ast::parse_module(ParseParams {
+        specifier,
+        text: ts_code.into(),
+        media_type: MediaType::TypeScript,
+        capture_tokens: false,
+        scope_analysis: false,
+        maybe_syntax: None,
+    })
+    .map_err(|e| format!("Transpile parse error: {}", e))?;
+
+    let transpiled = parsed
+        .transpile(
+            &TranspileOptions::default(),
+            &TranspileModuleOptions::default(),
+            &EmitOptions {
+                source_map: SourceMapOption::None,
+                ..Default::default()
+            },
+        )
+        .map_err(|e| format!("Transpile error: {}", e))?;
+
+    Ok(transpiled.into_source().text)
+}
+
 /// Process a V8 eval on the runtime thread
-fn process_eval(runtime: &mut JsRuntime, code: String) -> Result<String, String> {
+fn process_eval(runtime: &mut JsRuntime, code: String, transpile: bool) -> Result<String, String> {
+    let js_code = if transpile {
+        transpile_inline(&code)?
+    } else {
+        code
+    };
+
     let result = runtime
-        .execute_script("<denox>", code)
+        .execute_script("<denox>", js_code)
         .map_err(|e| format!("{}", e))?;
 
     let scope = &mut runtime.handle_scope();
@@ -43,7 +87,6 @@ fn process_eval(runtime: &mut JsRuntime, code: String) -> Result<String, String>
 // Rustler wraps Result<T, E>:
 //   Ok(value)  → {:ok, value}
 //   Err(error) → {:error, error}
-// So we return plain String, not (Atom, String) tuples.
 
 #[rustler::nif(schedule = "DirtyCpu")]
 fn runtime_new() -> Result<ResourceArc<RuntimeResource>, String> {
@@ -67,8 +110,12 @@ fn runtime_new() -> Result<ResourceArc<RuntimeResource>, String> {
         // Process commands until sender is dropped
         while let Ok(cmd) = rx.recv() {
             match cmd {
-                Command::Eval { code, reply } => {
-                    let result = process_eval(&mut runtime, code);
+                Command::Eval {
+                    code,
+                    transpile,
+                    reply,
+                } => {
+                    let result = process_eval(&mut runtime, code, transpile);
                     let _ = reply.send(result);
                 }
             }
@@ -80,12 +127,17 @@ fn runtime_new() -> Result<ResourceArc<RuntimeResource>, String> {
     Ok(ResourceArc::new(RuntimeResource { sender: tx }))
 }
 
-fn send_eval(resource: &RuntimeResource, code: String) -> Result<String, String> {
+fn send_eval(
+    resource: &RuntimeResource,
+    code: String,
+    transpile: bool,
+) -> Result<String, String> {
     let (reply_tx, reply_rx) = mpsc::channel();
     resource
         .sender
         .send(Command::Eval {
             code,
+            transpile,
             reply: reply_tx,
         })
         .map_err(|_| "Runtime thread has shut down".to_string())?;
@@ -96,8 +148,12 @@ fn send_eval(resource: &RuntimeResource, code: String) -> Result<String, String>
 }
 
 #[rustler::nif(schedule = "DirtyCpu")]
-fn eval(resource: ResourceArc<RuntimeResource>, code: String) -> Result<String, String> {
-    send_eval(&resource, code)
+fn eval(
+    resource: ResourceArc<RuntimeResource>,
+    code: String,
+    transpile: bool,
+) -> Result<String, String> {
+    send_eval(&resource, code, transpile)
 }
 
 #[rustler::nif(schedule = "DirtyCpu")]
@@ -107,7 +163,7 @@ fn call_function(
     args_json: String,
 ) -> Result<String, String> {
     let js_code = format!("((args) => {}(...args))({})", func_name, args_json);
-    send_eval(&resource, js_code)
+    send_eval(&resource, js_code, false)
 }
 
 rustler::init!("Elixir.Denox.Native", load = on_load);
