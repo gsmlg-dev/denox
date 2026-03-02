@@ -1,0 +1,7 @@
+{
+  "imports": {
+    "zod": "npm:zod@^3.22",
+    "lodash": "npm:lodash-es@^4.17",
+    "@std/path": "jsr:@std/path@^1.0"
+  }
+}
