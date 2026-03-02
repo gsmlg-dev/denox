@@ -76,6 +76,11 @@ defmodule Denox.Pool do
     GenServer.call(pool, {:eval_decode, code}, :infinity)
   end
 
+  @doc "Load a bundled JS file into all runtimes in the pool."
+  def load_npm(pool, bundle_path) do
+    GenServer.call(pool, {:load_npm, bundle_path}, :infinity)
+  end
+
   @doc "Return the pool size."
   def size(pool) do
     GenServer.call(pool, :size)
@@ -141,6 +146,25 @@ defmodule Denox.Pool do
   def handle_call({:eval_decode, code}, _from, state) do
     {rt, state} = next_runtime(state)
     {:reply, Denox.eval_decode(rt, code), state}
+  end
+
+  def handle_call({:load_npm, bundle_path}, _from, state) do
+    case File.read(bundle_path) do
+      {:ok, code} ->
+        results =
+          for i <- 0..(state.size - 1) do
+            rt = elem(state.runtimes, i)
+            Denox.exec(rt, code)
+          end
+
+        case Enum.find(results, &match?({:error, _}, &1)) do
+          nil -> {:reply, :ok, state}
+          error -> {:reply, error, state}
+        end
+
+      {:error, reason} ->
+        {:reply, {:error, "Failed to read bundle #{bundle_path}: #{reason}"}, state}
+    end
   end
 
   def handle_call(:size, _from, state) do

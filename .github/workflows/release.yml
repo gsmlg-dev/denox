@@ -1,0 +1,95 @@
+name: Build precompiled NIFs
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  build_release:
+    name: NIF ${{ matrix.nif }} - ${{ matrix.job.target }}
+    runs-on: ${{ matrix.job.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        nif: ["2.16", "2.17"]
+        job:
+          - { target: aarch64-apple-darwin, os: macos-14 }
+          - { target: x86_64-apple-darwin, os: macos-13 }
+          - { target: x86_64-unknown-linux-gnu, os: ubuntu-22.04 }
+          - { target: aarch64-unknown-linux-gnu, os: ubuntu-22.04, cross: true }
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Elixir
+        uses: erlef/setup-beam@v1
+        with:
+          elixir-version: "1.17"
+          otp-version: "27.0"
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.job.target }}
+
+      - name: Install cross-compilation tools
+        if: matrix.job.cross
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc-aarch64-linux-gnu g++-aarch64-linux-gnu
+
+      - name: Cache Rust dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            native/denox_nif/target
+          key: precomp-${{ matrix.job.target }}-${{ hashFiles('native/denox_nif/Cargo.lock') }}
+          restore-keys: |
+            precomp-${{ matrix.job.target }}-
+
+      - name: Install Elixir dependencies
+        run: mix deps.get
+
+      - name: Build precompiled NIF
+        run: |
+          export RUSTLER_NIF_VERSION=${{ matrix.nif }}
+          export CARGO_BUILD_TARGET=${{ matrix.job.target }}
+          if [ "${{ matrix.job.cross }}" = "true" ]; then
+            export CC_aarch64_unknown_linux_gnu=aarch64-linux-gnu-gcc
+            export CXX_aarch64_unknown_linux_gnu=aarch64-linux-gnu-g++
+            export CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc
+          fi
+          mix rustler_precompiled.build Denox.Native \
+            --target ${{ matrix.job.target }} \
+            --nif-version ${{ matrix.nif }}
+
+      - name: Upload NIF artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: nif-${{ matrix.job.target }}-nif${{ matrix.nif }}
+          path: native/denox_nif/target/${{ matrix.job.target }}/release/*.tar.gz
+
+  publish_release:
+    name: Publish GitHub Release
+    needs: build_release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          pattern: nif-*
+          merge-multiple: true
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: artifacts/**/*.tar.gz

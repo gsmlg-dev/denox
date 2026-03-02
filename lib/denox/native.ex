@@ -1,7 +1,13 @@
 defmodule Denox.Native do
-  use Rustler,
+  version = Mix.Project.config()[:version]
+
+  use RustlerPrecompiled,
     otp_app: :denox,
-    crate: "denox_nif"
+    crate: "denox_nif",
+    base_url: "https://github.com/gsmlg-dev/denox/releases/download/v#{version}",
+    version: version,
+    force_build: System.get_env("DENOX_BUILD") in ["1", "true"] or
+                   Application.compile_env(:denox, :force_build, false)
 
   def runtime_new(_base_dir, _cache_dir), do: :erlang.nif_error(:nif_not_loaded)
   def eval(_resource, _code, _transpile), do: :erlang.nif_error(:nif_not_loaded)
