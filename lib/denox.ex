@@ -10,12 +10,14 @@ defmodule Denox do
 
   Options:
     - `:base_dir` - base directory for resolving relative module imports
+    - `:cache_dir` - on-disk cache directory for remote module fetches
 
   Returns `{:ok, runtime}` or `{:error, message}`.
   """
   def runtime(opts \\ []) do
     base_dir = Keyword.get(opts, :base_dir, "")
-    Native.runtime_new(base_dir)
+    cache_dir = Keyword.get(opts, :cache_dir, "")
+    Native.runtime_new(base_dir, cache_dir)
   end
 
   # --- Synchronous eval (no event loop) ---

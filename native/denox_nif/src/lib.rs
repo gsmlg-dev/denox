@@ -190,7 +190,7 @@ fn process_eval_module(
 }
 
 #[rustler::nif(schedule = "DirtyCpu")]
-fn runtime_new(base_dir: String) -> Result<ResourceArc<RuntimeResource>, String> {
+fn runtime_new(base_dir: String, cache_dir: String) -> Result<ResourceArc<RuntimeResource>, String> {
     let (tx, rx) = mpsc::channel::<Command>();
 
     // Spawn a dedicated thread for this V8 isolate.
@@ -201,8 +201,6 @@ fn runtime_new(base_dir: String) -> Result<ResourceArc<RuntimeResource>, String>
             .expect("Failed to create tokio runtime");
 
         // Compute the async script name using the base_dir (or cwd fallback).
-        // Leaked to satisfy execute_script's &'static str requirement.
-        // One small allocation per runtime — acceptable.
         let base = if !base_dir.is_empty() {
             std::path::PathBuf::from(&base_dir)
                 .canonicalize()
@@ -217,9 +215,17 @@ fn runtime_new(base_dir: String) -> Result<ResourceArc<RuntimeResource>, String>
                 });
         let script_name: &'static str = Box::leak(script_url.to_string().into_boxed_str());
 
+        let loader_cache_dir = if cache_dir.is_empty() {
+            None
+        } else {
+            Some(cache_dir)
+        };
+
         let mut runtime = tokio_rt.block_on(async {
             JsRuntime::new(RuntimeOptions {
-                module_loader: Some(std::rc::Rc::new(ts_loader::TsModuleLoader)),
+                module_loader: Some(std::rc::Rc::new(
+                    ts_loader::TsModuleLoader::new(loader_cache_dir),
+                )),
                 ..Default::default()
             })
         });
