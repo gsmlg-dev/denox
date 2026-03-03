@@ -4,7 +4,7 @@ mod ts_loader;
 use callback_op::{CallbackRequest, CallbackState};
 use deno_core::JsRuntime;
 use deno_core::RuntimeOptions;
-use rustler::{Encoder, Env, LocalPid, ResourceArc, Term};
+use rustler::{Binary, Encoder, Env, LocalPid, OwnedBinary, ResourceArc, Term};
 use std::collections::HashMap;
 use std::sync::mpsc;
 use std::sync::Mutex;
@@ -211,6 +211,30 @@ fn process_eval_module(
     Ok("undefined".to_string())
 }
 
+/// Create a V8 snapshot from setup code. Returns the snapshot as a binary.
+#[rustler::nif(schedule = "DirtyCpu")]
+fn create_snapshot<'a>(env: Env<'a>, setup_code: String, transpile: bool) -> Result<Binary<'a>, String> {
+    let js_code = if transpile {
+        transpile_inline(&setup_code)?
+    } else {
+        setup_code
+    };
+
+    let mut runtime =
+        deno_core::JsRuntimeForSnapshot::new(RuntimeOptions::default());
+
+    runtime
+        .execute_script("<denox_snapshot>", js_code)
+        .map_err(|e| format!("Snapshot setup error: {}", e))?;
+
+    let snapshot = runtime.snapshot();
+    let bytes = snapshot.to_vec();
+    let mut binary = OwnedBinary::new(bytes.len())
+        .ok_or_else(|| "Failed to allocate binary for snapshot".to_string())?;
+    binary.as_mut_slice().copy_from_slice(&bytes);
+    Ok(binary.release(env))
+}
+
 #[rustler::nif(schedule = "DirtyCpu")]
 fn runtime_new(
     base_dir: String,
@@ -218,6 +242,7 @@ fn runtime_new(
     cache_dir: String,
     import_map_json: String,
     callback_pid: Option<LocalPid>,
+    snapshot: Binary,
 ) -> Result<ResourceArc<RuntimeResource>, String> {
     let (tx, rx) = mpsc::channel::<Command>();
 
@@ -227,6 +252,14 @@ fn runtime_new(
     } else {
         serde_json::from_str(&import_map_json)
             .map_err(|e| format!("Invalid import map JSON: {}", e))?
+    };
+
+    // Leak snapshot bytes to get 'static lifetime (V8 requires it)
+    let startup_snapshot: Option<&'static [u8]> = if snapshot.is_empty() {
+        None
+    } else {
+        let bytes = snapshot.as_slice().to_vec();
+        Some(Box::leak(bytes.into_boxed_slice()))
     };
 
     // Create callback channels
@@ -264,6 +297,7 @@ fn runtime_new(
                     loader_cache_dir,
                     import_map,
                 ))),
+                startup_snapshot,
                 ..Default::default()
             };
 

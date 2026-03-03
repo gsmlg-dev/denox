@@ -645,11 +645,11 @@ A V8 crash (segfault in V8 native code) will crash the entire BEAM process. This
 
 ### Phase 8: Nice-to-Haves (Post-MVP)
 
-- JS → Elixir callbacks (like DenoRider's `DenoRider.apply`)
-- Import map support in eval_async (not just eval_module)
-- `Denox.Npm.bundle` for pre-bundling alternative
-- Warm-up / snapshot support (V8 snapshots for faster cold start)
-- Telemetry integration for eval timing
+- JS → Elixir callbacks (like DenoRider's `DenoRider.apply`) ✅
+- Import map support in eval_async (not just eval_module) ✅
+- `Denox.Npm.bundle` for pre-bundling alternative ✅
+- Warm-up / snapshot support (V8 snapshots for faster cold start) ✅
+- Telemetry integration for eval timing ✅
 
 ---
 
@@ -751,7 +751,8 @@ denox/
 | CDN imports | ✅ | ❌ | ❌ |
 | Package manager | deno CLI (build-time) | ❌ | uv (build-time) |
 | Dep vendoring | ✅ (deno vendor) | ❌ | ✅ (venv) |
-| Runtime → Elixir callback | ❌ (planned) | ✅ | ✅ |
+| Runtime → Elixir callback | ✅ | ✅ | ✅ |
+| Import maps | ✅ | ❌ | N/A |
 | Precompiled binaries | ❌ (planned) | ✅ | ✅ |
 | Sandbox mode | ✅ | ❌ | ❌ |
 | Runtime pooling | ✅ | ❌ (single supervised) | ❌ |

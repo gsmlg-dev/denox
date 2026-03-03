@@ -32,6 +32,7 @@ defmodule Denox do
     - `:cache_dir` - on-disk cache directory for remote module fetches
     - `:import_map` - map of bare specifiers to resolved URLs/paths (e.g. `%{"lodash" => "https://esm.sh/lodash"}`)
     - `:callback_pid` - PID of the process that handles JS→Elixir callbacks (enables `Denox.callback()` in JS)
+    - `:snapshot` - V8 snapshot binary for faster cold start (created via `create_snapshot/2`)
 
   Returns `{:ok, runtime}` or `{:error, message}`.
   """
@@ -41,6 +42,7 @@ defmodule Denox do
     sandbox = Keyword.get(opts, :sandbox, false)
     cache_dir = Keyword.get(opts, :cache_dir, "")
     callback_pid = Keyword.get(opts, :callback_pid)
+    snapshot = Keyword.get(opts, :snapshot, <<>>)
 
     import_map_json =
       case Keyword.get(opts, :import_map) do
@@ -48,7 +50,31 @@ defmodule Denox do
         map when is_map(map) -> Jason.encode!(map)
       end
 
-    Native.runtime_new(base_dir, sandbox, cache_dir, import_map_json, callback_pid)
+    Native.runtime_new(base_dir, sandbox, cache_dir, import_map_json, callback_pid, snapshot)
+  end
+
+  @doc """
+  Create a V8 snapshot from setup code.
+
+  The snapshot captures all global state (variables, functions, etc.)
+  after executing the setup code. Load it with `runtime(snapshot: bytes)`
+  for faster cold starts.
+
+  Options:
+    - `:transpile` - if true, transpile TypeScript before executing (default: false)
+
+  Returns `{:ok, snapshot_bytes}` or `{:error, message}`.
+
+  ## Example
+
+      {:ok, snapshot} = Denox.create_snapshot("globalThis.helper = (x) => x * 2")
+      {:ok, rt} = Denox.runtime(snapshot: snapshot)
+      {:ok, "10"} = Denox.call(rt, "helper", [5])
+  """
+  @spec create_snapshot(String.t(), keyword()) :: {:ok, binary()} | {:error, String.t()}
+  def create_snapshot(setup_code, opts \\ []) do
+    transpile = Keyword.get(opts, :transpile, false)
+    Native.create_snapshot(setup_code, transpile)
   end
 
   # --- Synchronous eval (no event loop) ---

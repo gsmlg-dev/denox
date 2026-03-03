@@ -14,6 +14,9 @@ Denox gives Elixir applications first-class access to the JS/TS ecosystem — ev
 - **Dependency management** — `deno.json` + `deno install` for npm/jsr packages
 - **Pre-bundling** — `deno bundle` for self-contained JS files
 - **Runtime pool** — round-robin across N V8 isolates for concurrent workloads
+- **Import maps** — bare specifier resolution via `import_map` option
+- **JS → Elixir callbacks** — call Elixir functions from JavaScript
+- **V8 snapshots** — pre-initialize global state for faster cold starts
 - **Telemetry** — built-in `:telemetry` events for eval timing
 
 ## Installation
@@ -84,6 +87,70 @@ children = [
 {:ok, result} = Denox.Pool.eval(:js_pool, "1 + 2")
 {:ok, result} = Denox.Pool.eval_ts(:js_pool, "const x: number = 42; x")
 {:ok, result} = Denox.Pool.eval_async(:js_pool, "return await Promise.resolve(99)")
+```
+
+## Import Maps
+
+Resolve bare specifiers to file paths or URLs:
+
+```elixir
+{:ok, rt} = Denox.runtime(
+  base_dir: "/path/to/project",
+  import_map: %{
+    "utils" => "file:///path/to/project/utils.js",
+    "mylib/" => "file:///path/to/project/lib/"
+  }
+)
+
+# JavaScript can now use bare specifiers
+{:ok, _} = Denox.eval_async(rt, """
+  const { helper } = await import("utils");
+  const { add } = await import("mylib/math.ts");
+""")
+```
+
+## JS → Elixir Callbacks
+
+Call Elixir functions from JavaScript:
+
+```elixir
+# Create a runtime with callbacks
+{:ok, rt, handler} = Denox.CallbackHandler.runtime(
+  callbacks: %{
+    "greet" => fn [name] -> "Hello, #{name}!" end,
+    "add" => fn [a, b] -> a + b end,
+    "get_user" => fn [id] -> %{id: id, name: "User #{id}"} end
+  }
+)
+
+# JavaScript calls Elixir functions synchronously
+{:ok, result} = Denox.eval(rt, ~s[Denox.callback("greet", "Alice")])
+# result => "\"Hello, Alice!\""
+
+{:ok, result} = Denox.eval(rt, ~s[Denox.callback("add", 10, 20)])
+# result => "30"
+```
+
+## V8 Snapshots
+
+Create V8 snapshots for faster cold starts:
+
+```elixir
+# Create a snapshot with pre-initialized state
+{:ok, snapshot} = Denox.create_snapshot("""
+  globalThis.helper = (x) => x * 2;
+  globalThis.config = { debug: false };
+""")
+
+# Load the snapshot into a new runtime (instant startup)
+{:ok, rt} = Denox.runtime(snapshot: snapshot)
+{:ok, "10"} = Denox.call(rt, "helper", [5])
+
+# TypeScript snapshots (transpiled before snapshotting)
+{:ok, snapshot} = Denox.create_snapshot(
+  "globalThis.add = (a: number, b: number): number => a + b",
+  transpile: true
+)
 ```
 
 ## CDN Imports
