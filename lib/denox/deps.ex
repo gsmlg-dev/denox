@@ -56,6 +56,7 @@ defmodule Denox.Deps do
   Options:
     - `:config` - path to deno.json (default: "deno.json")
     - `:cache_dir` - cache directory for remote fetches (default: "_denox/cache")
+    - `:import_map` - map of bare specifiers to resolved URLs/paths
     - Additional options passed to `Denox.runtime/1`
 
   Returns `{:ok, runtime}` or `{:error, message}`.
@@ -63,14 +64,22 @@ defmodule Denox.Deps do
   def runtime(opts \\ []) do
     config = Keyword.get(opts, :config, @deno_json)
     cache_dir = Keyword.get(opts, :cache_dir, @cache_dir)
+    import_map = Keyword.get(opts, :import_map, %{})
     config_dir = config |> Path.expand() |> Path.dirname()
 
     case check(config: config) do
       :ok ->
-        Denox.runtime(
+        runtime_opts = [
           base_dir: config_dir,
           cache_dir: cache_dir
-        )
+        ]
+
+        runtime_opts =
+          if map_size(import_map) > 0,
+            do: Keyword.put(runtime_opts, :import_map, import_map),
+            else: runtime_opts
+
+        Denox.runtime(runtime_opts)
 
       error ->
         error

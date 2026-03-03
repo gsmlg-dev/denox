@@ -10,11 +10,13 @@ defmodule Denox.Native do
       System.get_env("DENOX_BUILD") in ["1", "true"] or
         Application.compile_env(:denox, :force_build, false)
 
-  def runtime_new(_base_dir, _sandbox, _cache_dir, _import_map_json),
+  def runtime_new(_base_dir, _sandbox, _cache_dir, _import_map_json, _callback_pid),
     do: :erlang.nif_error(:nif_not_loaded)
 
   def eval(_resource, _code, _transpile), do: :erlang.nif_error(:nif_not_loaded)
   def eval_async(_resource, _code, _transpile), do: :erlang.nif_error(:nif_not_loaded)
   def eval_module(_resource, _path), do: :erlang.nif_error(:nif_not_loaded)
   def call_function(_resource, _name, _args_json), do: :erlang.nif_error(:nif_not_loaded)
+  def callback_reply(_resource, _callback_id, _result_json), do: :erlang.nif_error(:nif_not_loaded)
+  def callback_error(_resource, _callback_id, _error_msg), do: :erlang.nif_error(:nif_not_loaded)
 end

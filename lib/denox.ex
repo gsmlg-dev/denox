@@ -31,6 +31,7 @@ defmodule Denox do
     - `:sandbox` - if true, disable built-in extensions (fs/net ops) for reduced attack surface
     - `:cache_dir` - on-disk cache directory for remote module fetches
     - `:import_map` - map of bare specifiers to resolved URLs/paths (e.g. `%{"lodash" => "https://esm.sh/lodash"}`)
+    - `:callback_pid` - PID of the process that handles JS→Elixir callbacks (enables `Denox.callback()` in JS)
 
   Returns `{:ok, runtime}` or `{:error, message}`.
   """
@@ -39,6 +40,7 @@ defmodule Denox do
     base_dir = Keyword.get(opts, :base_dir, "")
     sandbox = Keyword.get(opts, :sandbox, false)
     cache_dir = Keyword.get(opts, :cache_dir, "")
+    callback_pid = Keyword.get(opts, :callback_pid)
 
     import_map_json =
       case Keyword.get(opts, :import_map) do
@@ -46,7 +48,7 @@ defmodule Denox do
         map when is_map(map) -> Jason.encode!(map)
       end
 
-    Native.runtime_new(base_dir, sandbox, cache_dir, import_map_json)
+    Native.runtime_new(base_dir, sandbox, cache_dir, import_map_json, callback_pid)
   end
 
   # --- Synchronous eval (no event loop) ---

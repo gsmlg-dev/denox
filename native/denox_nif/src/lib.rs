@@ -1,9 +1,17 @@
+mod callback_op;
 mod ts_loader;
 
+use callback_op::{CallbackRequest, CallbackState};
 use deno_core::JsRuntime;
 use deno_core::RuntimeOptions;
-use rustler::{Env, ResourceArc, Term};
+use rustler::{Encoder, Env, LocalPid, ResourceArc, Term};
+use std::collections::HashMap;
 use std::sync::mpsc;
+use std::sync::Mutex;
+
+rustler::atoms! {
+    denox_callback,
+}
 
 // Commands sent to the dedicated V8 thread
 enum Command {
@@ -25,9 +33,20 @@ enum Command {
 
 struct RuntimeResource {
     sender: mpsc::Sender<Command>,
+    /// Receives callback requests from the V8 thread's op_elixir_call
+    callback_rx: Mutex<mpsc::Receiver<CallbackRequest>>,
+    /// Pending callback reply senders, keyed by callback ID.
+    /// Used by callback_reply NIF to send results back to the NIF caller.
+    pending_callbacks: Mutex<HashMap<u64, mpsc::Sender<Result<String, String>>>>,
+    /// Elixir PID to send callback requests to (None = callbacks disabled)
+    callback_pid: Option<LocalPid>,
 }
 
-// SAFETY: The RuntimeResource only holds a channel sender, which is Send+Sync.
+// SAFETY: The RuntimeResource fields are all thread-safe:
+// - mpsc::Sender is Send+Sync
+// - Mutex<mpsc::Receiver> is Send+Sync
+// - Mutex<HashMap> is Send+Sync
+// - LocalPid is Send+Sync (just a PID identifier)
 // The actual JsRuntime lives on a dedicated thread and is never shared.
 unsafe impl Send for RuntimeResource {}
 unsafe impl Sync for RuntimeResource {}
@@ -198,16 +217,21 @@ fn runtime_new(
     sandbox: bool,
     cache_dir: String,
     import_map_json: String,
+    callback_pid: Option<LocalPid>,
 ) -> Result<ResourceArc<RuntimeResource>, String> {
     let (tx, rx) = mpsc::channel::<Command>();
 
     // Parse import map JSON before moving into the thread
-    let import_map: std::collections::HashMap<String, String> = if import_map_json.is_empty() {
-        std::collections::HashMap::new()
+    let import_map: HashMap<String, String> = if import_map_json.is_empty() {
+        HashMap::new()
     } else {
         serde_json::from_str(&import_map_json)
             .map_err(|e| format!("Invalid import map JSON: {}", e))?
     };
+
+    // Create callback channels
+    let (callback_tx, callback_rx) = mpsc::channel::<CallbackRequest>();
+    let has_callbacks = callback_pid.is_some();
 
     // Spawn a dedicated thread for this V8 isolate.
     std::thread::spawn(move || {
@@ -243,6 +267,12 @@ fn runtime_new(
                 ..Default::default()
             };
 
+            // Register the callback extension if callbacks are enabled
+            if has_callbacks {
+                opts.extensions
+                    .push(callback_op::denox_callback_ext::init_ops());
+            }
+
             // In sandbox mode, strip all extensions to disable fs/net/timer ops
             if sandbox {
                 opts.extensions = vec![];
@@ -250,6 +280,28 @@ fn runtime_new(
 
             JsRuntime::new(opts)
         });
+
+        // Insert callback state into OpState if callbacks are enabled
+        if has_callbacks {
+            runtime.op_state().borrow_mut().put(CallbackState {
+                request_tx: callback_tx,
+                next_id: std::sync::atomic::AtomicU64::new(0),
+            });
+
+            // Set up the globalThis.Denox.callback() helper
+            let _ = runtime.execute_script(
+                "<denox_callback_init>",
+                r#"
+                globalThis.Denox = {
+                    callback: function(name) {
+                        var args = Array.prototype.slice.call(arguments, 1);
+                        var result = Deno.core.ops.op_elixir_call(name, JSON.stringify(args));
+                        return JSON.parse(result);
+                    }
+                };
+                "#,
+            );
+        }
 
         while let Ok(cmd) = rx.recv() {
             match cmd {
@@ -278,11 +330,20 @@ fn runtime_new(
         }
     });
 
-    Ok(ResourceArc::new(RuntimeResource { sender: tx }))
+    Ok(ResourceArc::new(RuntimeResource {
+        sender: tx,
+        callback_rx: Mutex::new(callback_rx),
+        pending_callbacks: Mutex::new(HashMap::new()),
+        callback_pid,
+    }))
 }
 
+/// Send a command to the V8 thread and wait for the result.
+/// If callbacks are enabled, polls for callback requests while waiting
+/// and forwards them to the Elixir callback handler process.
 fn send_command(
-    resource: &RuntimeResource,
+    env: Env,
+    resource: &ResourceArc<RuntimeResource>,
     cmd_fn: impl FnOnce(mpsc::Sender<Result<String, String>>) -> Command,
 ) -> Result<String, String> {
     let (reply_tx, reply_rx) = mpsc::channel();
@@ -291,18 +352,94 @@ fn send_command(
         .send(cmd_fn(reply_tx))
         .map_err(|_| "Runtime thread has shut down".to_string())?;
 
-    reply_rx
+    // If no callback handler, just block waiting for the result
+    if resource.callback_pid.is_none() {
+        return reply_rx
+            .recv()
+            .map_err(|_| "Runtime thread died".to_string())?;
+    }
+
+    let callback_pid = resource.callback_pid.as_ref().unwrap();
+
+    // Poll for both eval results and callback requests
+    loop {
+        // Check for eval result (non-blocking)
+        match reply_rx.try_recv() {
+            Ok(result) => return result,
+            Err(mpsc::TryRecvError::Disconnected) => {
+                return Err("Runtime thread died".to_string());
+            }
+            Err(mpsc::TryRecvError::Empty) => {}
+        }
+
+        // Check for callback requests (non-blocking)
+        let maybe_req = {
+            let rx = resource.callback_rx.lock().unwrap();
+            rx.try_recv().ok()
+        };
+
+        if let Some(req) = maybe_req {
+            handle_callback(env, resource, req, callback_pid);
+        } else {
+            // Brief sleep to avoid busy-waiting
+            std::thread::sleep(std::time::Duration::from_micros(50));
+        }
+    }
+}
+
+/// Handle a single callback request: send to Elixir, wait for reply, forward to V8.
+fn handle_callback(
+    env: Env,
+    resource: &ResourceArc<RuntimeResource>,
+    req: CallbackRequest,
+    pid: &LocalPid,
+) {
+    let callback_id = req.id;
+
+    // Create a channel for the callback_reply NIF to send the result back
+    let (cb_reply_tx, cb_reply_rx) = mpsc::channel();
+    resource
+        .pending_callbacks
+        .lock()
+        .unwrap()
+        .insert(callback_id, cb_reply_tx);
+
+    // Send {:denox_callback, resource, callback_id, name, args_json} to Elixir
+    // Use Env::send (works from dirty scheduler threads)
+    let msg = (
+        denox_callback(),
+        resource.clone(),
+        callback_id,
+        req.name.as_str(),
+        req.args_json.as_str(),
+    )
+        .encode(env);
+    let _ = env.send(pid, msg);
+
+    // Block until the callback_reply NIF delivers the result
+    let result = cb_reply_rx
         .recv()
-        .map_err(|_| "Runtime thread died".to_string())?
+        .unwrap_or(Err("Callback reply channel closed".to_string()));
+
+    // Clean up
+    resource
+        .pending_callbacks
+        .lock()
+        .unwrap()
+        .remove(&callback_id);
+
+    // Send result back to the V8 thread
+    let _ = req.reply_tx.send(result);
 }
 
 #[rustler::nif(schedule = "DirtyCpu")]
 fn eval(
+    env: Env,
     resource: ResourceArc<RuntimeResource>,
     code: String,
     transpile: bool,
 ) -> Result<String, String> {
-    send_command(&resource, |reply| Command::Eval {
+    send_command(env, &resource, |reply| Command::Eval {
         code,
         transpile,
         reply,
@@ -311,11 +448,12 @@ fn eval(
 
 #[rustler::nif(schedule = "DirtyCpu")]
 fn eval_async(
+    env: Env,
     resource: ResourceArc<RuntimeResource>,
     code: String,
     transpile: bool,
 ) -> Result<String, String> {
-    send_command(&resource, |reply| Command::EvalAsync {
+    send_command(env, &resource, |reply| Command::EvalAsync {
         code,
         transpile,
         reply,
@@ -323,22 +461,59 @@ fn eval_async(
 }
 
 #[rustler::nif(schedule = "DirtyCpu")]
-fn eval_module(resource: ResourceArc<RuntimeResource>, path: String) -> Result<String, String> {
-    send_command(&resource, |reply| Command::EvalModule { path, reply })
+fn eval_module(env: Env, resource: ResourceArc<RuntimeResource>, path: String) -> Result<String, String> {
+    send_command(env, &resource, |reply| Command::EvalModule { path, reply })
 }
 
 #[rustler::nif(schedule = "DirtyCpu")]
 fn call_function(
+    env: Env,
     resource: ResourceArc<RuntimeResource>,
     func_name: String,
     args_json: String,
 ) -> Result<String, String> {
     let js_code = format!("((args) => {}(...args))({})", func_name, args_json);
-    send_command(&resource, |reply| Command::Eval {
+    send_command(env, &resource, |reply| Command::Eval {
         code: js_code,
         transpile: false,
         reply,
     })
+}
+
+/// NIF called by the Elixir callback handler to deliver a callback result.
+#[rustler::nif(schedule = "DirtyCpu")]
+fn callback_reply(
+    resource: ResourceArc<RuntimeResource>,
+    callback_id: u64,
+    result_json: String,
+) -> Result<(), String> {
+    let tx = resource
+        .pending_callbacks
+        .lock()
+        .unwrap()
+        .remove(&callback_id)
+        .ok_or_else(|| format!("Unknown callback ID: {}", callback_id))?;
+
+    tx.send(Ok(result_json))
+        .map_err(|_| "Failed to send callback reply".to_string())
+}
+
+/// NIF called by the Elixir callback handler to deliver a callback error.
+#[rustler::nif(schedule = "DirtyCpu")]
+fn callback_error(
+    resource: ResourceArc<RuntimeResource>,
+    callback_id: u64,
+    error_msg: String,
+) -> Result<(), String> {
+    let tx = resource
+        .pending_callbacks
+        .lock()
+        .unwrap()
+        .remove(&callback_id)
+        .ok_or_else(|| format!("Unknown callback ID: {}", callback_id))?;
+
+    tx.send(Err(error_msg))
+        .map_err(|_| "Failed to send callback error".to_string())
 }
 
 rustler::init!("Elixir.Denox.Native", load = on_load);
