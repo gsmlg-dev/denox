@@ -30,6 +30,7 @@ defmodule Denox do
     - `:base_dir` - base directory for resolving relative module imports
     - `:sandbox` - if true, disable built-in extensions (fs/net ops) for reduced attack surface
     - `:cache_dir` - on-disk cache directory for remote module fetches
+    - `:import_map` - map of bare specifiers to resolved URLs/paths (e.g. `%{"lodash" => "https://esm.sh/lodash"}`)
 
   Returns `{:ok, runtime}` or `{:error, message}`.
   """
@@ -38,7 +39,14 @@ defmodule Denox do
     base_dir = Keyword.get(opts, :base_dir, "")
     sandbox = Keyword.get(opts, :sandbox, false)
     cache_dir = Keyword.get(opts, :cache_dir, "")
-    Native.runtime_new(base_dir, sandbox, cache_dir)
+
+    import_map_json =
+      case Keyword.get(opts, :import_map) do
+        nil -> ""
+        map when is_map(map) -> Jason.encode!(map)
+      end
+
+    Native.runtime_new(base_dir, sandbox, cache_dir, import_map_json)
   end
 
   # --- Synchronous eval (no event loop) ---

@@ -197,8 +197,17 @@ fn runtime_new(
     base_dir: String,
     sandbox: bool,
     cache_dir: String,
+    import_map_json: String,
 ) -> Result<ResourceArc<RuntimeResource>, String> {
     let (tx, rx) = mpsc::channel::<Command>();
+
+    // Parse import map JSON before moving into the thread
+    let import_map: std::collections::HashMap<String, String> = if import_map_json.is_empty() {
+        std::collections::HashMap::new()
+    } else {
+        serde_json::from_str(&import_map_json)
+            .map_err(|e| format!("Invalid import map JSON: {}", e))?
+    };
 
     // Spawn a dedicated thread for this V8 isolate.
     std::thread::spawn(move || {
@@ -229,6 +238,7 @@ fn runtime_new(
             let mut opts = RuntimeOptions {
                 module_loader: Some(std::rc::Rc::new(ts_loader::TsModuleLoader::new(
                     loader_cache_dir,
+                    import_map,
                 ))),
                 ..Default::default()
             };

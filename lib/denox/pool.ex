@@ -119,7 +119,7 @@ defmodule Denox.Pool do
 
     runtime_opts =
       opts
-      |> Keyword.take([:base_dir, :cache_dir, :sandbox])
+      |> Keyword.take([:base_dir, :cache_dir, :sandbox, :import_map])
 
     runtimes =
       for _ <- 1..pool_size do

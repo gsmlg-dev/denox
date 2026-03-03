@@ -20,14 +20,36 @@ pub struct TsModuleLoader {
     cache: Arc<Mutex<HashMap<String, CachedModule>>>,
     /// Optional on-disk cache directory
     cache_dir: Option<PathBuf>,
+    /// Import map: bare specifier → resolved URL/path
+    import_map: HashMap<String, String>,
 }
 
 impl TsModuleLoader {
-    pub fn new(cache_dir: Option<String>) -> Self {
+    pub fn new(cache_dir: Option<String>, import_map: HashMap<String, String>) -> Self {
         Self {
             cache: Arc::new(Mutex::new(HashMap::new())),
             cache_dir: cache_dir.map(PathBuf::from),
+            import_map,
         }
+    }
+
+    /// Resolve a specifier through the import map.
+    /// Returns the mapped specifier if found, otherwise returns the original.
+    fn resolve_import_map(&self, specifier: &str) -> Option<String> {
+        // Exact match first
+        if let Some(mapped) = self.import_map.get(specifier) {
+            return Some(mapped.clone());
+        }
+
+        // Prefix match: "lodash/" maps "lodash/add" to the mapped prefix + "add"
+        for (key, value) in &self.import_map {
+            if key.ends_with('/') && specifier.starts_with(key.as_str()) {
+                let suffix = &specifier[key.len()..];
+                return Some(format!("{}{}", value, suffix));
+            }
+        }
+
+        None
     }
 
     fn media_type_from_specifier(specifier: &ModuleSpecifier) -> MediaType {
@@ -273,6 +295,17 @@ impl ModuleLoader for TsModuleLoader {
         referrer: &str,
         _kind: ResolutionKind,
     ) -> Result<ModuleSpecifier, Error> {
+        // Check import map first for bare specifiers
+        if let Some(mapped) = self.resolve_import_map(specifier) {
+            // The mapped value could be a URL or a relative path
+            // Try parsing as URL first, then resolve relative to referrer
+            if let Ok(url) = ModuleSpecifier::parse(&mapped) {
+                return Ok(url);
+            }
+            // Resolve mapped value relative to referrer
+            return deno_core::resolve_import(&mapped, referrer).map_err(|e| e.into());
+        }
+
         deno_core::resolve_import(specifier, referrer).map_err(|e| e.into())
     }
 
