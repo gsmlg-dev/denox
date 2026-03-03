@@ -32,6 +32,8 @@ struct RuntimeResource {
 unsafe impl Send for RuntimeResource {}
 unsafe impl Sync for RuntimeResource {}
 
+impl rustler::Resource for RuntimeResource {}
+
 /// Transpile TypeScript to JavaScript using deno_ast (swc).
 fn transpile_inline(ts_code: &str) -> Result<String, String> {
     use deno_ast::{
@@ -193,6 +195,7 @@ fn process_eval_module(
 #[rustler::nif(schedule = "DirtyCpu")]
 fn runtime_new(
     base_dir: String,
+    sandbox: bool,
     cache_dir: String,
 ) -> Result<ResourceArc<RuntimeResource>, String> {
     let (tx, rx) = mpsc::channel::<Command>();
@@ -223,12 +226,19 @@ fn runtime_new(
         };
 
         let mut runtime = tokio_rt.block_on(async {
-            JsRuntime::new(RuntimeOptions {
+            let mut opts = RuntimeOptions {
                 module_loader: Some(std::rc::Rc::new(ts_loader::TsModuleLoader::new(
                     loader_cache_dir,
                 ))),
                 ..Default::default()
-            })
+            };
+
+            // In sandbox mode, strip all extensions to disable fs/net/timer ops
+            if sandbox {
+                opts.extensions = vec![];
+            }
+
+            JsRuntime::new(opts)
         });
 
         while let Ok(cmd) = rx.recv() {
@@ -324,6 +334,5 @@ fn call_function(
 rustler::init!("Elixir.Denox.Native", load = on_load);
 
 fn on_load(env: Env, _info: Term) -> bool {
-    rustler::resource!(RuntimeResource, env);
-    true
+    env.register::<RuntimeResource>().is_ok()
 }
