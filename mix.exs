@@ -12,7 +12,8 @@ defmodule Denox.MixProject do
       start_permanent: Mix.env() == :prod,
       deps: deps(),
       description: description(),
-      package: package()
+      package: package(),
+      docs: docs()
     ]
   end
 
@@ -44,12 +45,28 @@ defmodule Denox.MixProject do
     ]
   end
 
+  defp docs do
+    [
+      main: "readme",
+      source_ref: "v#{@version}",
+      source_url: @source_url,
+      extras: ["README.md", "DENOX_DESIGN.md"],
+      groups_for_modules: [
+        Core: [Denox],
+        Pool: [Denox.Pool],
+        Dependencies: [Denox.Deps, Denox.Npm],
+        Internal: [Denox.Native]
+      ]
+    ]
+  end
+
   defp deps do
     [
       {:rustler, "~> 0.36", optional: true},
       {:rustler_precompiled, "~> 0.8"},
       {:jason, "~> 1.4"},
       {:telemetry, "~> 1.0"},
+      {:ex_doc, "~> 0.34", only: :dev, runtime: false},
       {:benchee, "~> 1.0", only: :dev, runtime: false}
     ]
   end

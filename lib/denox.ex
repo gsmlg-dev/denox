@@ -21,6 +21,8 @@ defmodule Denox do
 
   alias Denox.Native
 
+  @type runtime :: reference()
+
   @doc """
   Create a new JavaScript runtime.
 
@@ -31,6 +33,7 @@ defmodule Denox do
 
   Returns `{:ok, runtime}` or `{:error, message}`.
   """
+  @spec runtime(keyword()) :: {:ok, runtime()} | {:error, String.t()}
   def runtime(opts \\ []) do
     base_dir = Keyword.get(opts, :base_dir, "")
     sandbox = Keyword.get(opts, :sandbox, false)
@@ -45,6 +48,7 @@ defmodule Denox do
 
   Returns `{:ok, json_string}` or `{:error, message}`.
   """
+  @spec eval(runtime(), String.t()) :: {:ok, String.t()} | {:error, String.t()}
   def eval(rt, code) do
     telemetry_span(:eval, fn -> Native.eval(rt, code, false) end)
   end
@@ -55,6 +59,7 @@ defmodule Denox do
 
   Returns `{:ok, json_string}` or `{:error, message}`.
   """
+  @spec eval_ts(runtime(), String.t()) :: {:ok, String.t()} | {:error, String.t()}
   def eval_ts(rt, code) do
     telemetry_span(:eval_ts, fn -> Native.eval(rt, code, true) end)
   end
@@ -64,6 +69,7 @@ defmodule Denox do
 
   Returns `:ok` or `{:error, message}`.
   """
+  @spec exec(runtime(), String.t()) :: :ok | {:error, String.t()}
   def exec(rt, code) do
     case eval(rt, code) do
       {:ok, _} -> :ok
@@ -76,6 +82,7 @@ defmodule Denox do
 
   Returns `:ok` or `{:error, message}`.
   """
+  @spec exec_ts(runtime(), String.t()) :: :ok | {:error, String.t()}
   def exec_ts(rt, code) do
     case eval_ts(rt, code) do
       {:ok, _} -> :ok
@@ -91,6 +98,7 @@ defmodule Denox do
 
   Returns `{:ok, json_string}` or `{:error, message}`.
   """
+  @spec eval_async(runtime(), String.t()) :: {:ok, String.t()} | {:error, String.t()}
   def eval_async(rt, code) do
     telemetry_span(:eval_async, fn -> Native.eval_async(rt, code, false) end)
   end
@@ -100,6 +108,7 @@ defmodule Denox do
 
   Returns `{:ok, json_string}` or `{:error, message}`.
   """
+  @spec eval_ts_async(runtime(), String.t()) :: {:ok, String.t()} | {:error, String.t()}
   def eval_ts_async(rt, code) do
     telemetry_span(:eval_ts_async, fn -> Native.eval_async(rt, code, true) end)
   end
@@ -111,6 +120,7 @@ defmodule Denox do
 
   Returns `{:ok, "undefined"}` or `{:error, message}`.
   """
+  @spec eval_module(runtime(), String.t()) :: {:ok, String.t()} | {:error, String.t()}
   def eval_module(rt, path) do
     telemetry_span(:eval_module, fn -> Native.eval_module(rt, path) end)
   end
@@ -125,6 +135,7 @@ defmodule Denox do
 
   Returns `{:ok, json_string}` or `{:error, message}`.
   """
+  @spec eval_file(runtime(), String.t(), keyword()) :: {:ok, String.t()} | {:error, String.t()}
   def eval_file(rt, path, opts \\ []) do
     transpile = Keyword.get(opts, :transpile, ts_extension?(path))
 
@@ -143,6 +154,7 @@ defmodule Denox do
 
   Arguments are serialized to JSON. Returns `{:ok, json_string}` or `{:error, message}`.
   """
+  @spec call(runtime(), String.t(), list()) :: {:ok, String.t()} | {:error, String.t()}
   def call(rt, func_name, args \\ []) do
     args_json = Jason.encode!(args)
     Native.call_function(rt, func_name, args_json)
@@ -153,6 +165,7 @@ defmodule Denox do
 
   Returns `{:ok, json_string}` or `{:error, message}`.
   """
+  @spec call_async(runtime(), String.t(), list()) :: {:ok, String.t()} | {:error, String.t()}
   def call_async(rt, func_name, args \\ []) do
     args_json = Jason.encode!(args)
     code = "return await ((args) => #{func_name}(...args))(#{args_json})"
@@ -164,6 +177,7 @@ defmodule Denox do
   @doc """
   Evaluate JavaScript code and decode the JSON result to Elixir terms.
   """
+  @spec eval_decode(runtime(), String.t()) :: {:ok, term()} | {:error, term()}
   def eval_decode(rt, code) do
     with {:ok, json} <- eval(rt, code), do: Jason.decode(json)
   end
@@ -171,6 +185,7 @@ defmodule Denox do
   @doc """
   Evaluate TypeScript code and decode the JSON result to Elixir terms.
   """
+  @spec eval_ts_decode(runtime(), String.t()) :: {:ok, term()} | {:error, term()}
   def eval_ts_decode(rt, code) do
     with {:ok, json} <- eval_ts(rt, code), do: Jason.decode(json)
   end
@@ -178,6 +193,7 @@ defmodule Denox do
   @doc """
   Call a named JavaScript function and decode the JSON result.
   """
+  @spec call_decode(runtime(), String.t(), list()) :: {:ok, term()} | {:error, term()}
   def call_decode(rt, func_name, args \\ []) do
     with {:ok, json} <- call(rt, func_name, args), do: Jason.decode(json)
   end
@@ -185,6 +201,7 @@ defmodule Denox do
   @doc """
   Call a named async JavaScript function and decode the JSON result.
   """
+  @spec call_async_decode(runtime(), String.t(), list()) :: {:ok, term()} | {:error, term()}
   def call_async_decode(rt, func_name, args \\ []) do
     with {:ok, json} <- call_async(rt, func_name, args), do: Jason.decode(json)
   end
