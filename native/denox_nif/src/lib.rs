@@ -75,8 +75,9 @@ fn extract_value(
     let local = deno_core::v8::Local::new(scope, global);
 
     match deno_core::serde_v8::from_v8::<serde_json::Value>(scope, local) {
-        Ok(json_val) => serde_json::to_string(&json_val)
-            .map_err(|e| format!("JSON serialization error: {}", e)),
+        Ok(json_val) => {
+            serde_json::to_string(&json_val).map_err(|e| format!("JSON serialization error: {}", e))
+        }
         Err(_) => Ok(local.to_rust_string_lossy(scope)),
     }
 }
@@ -190,7 +191,10 @@ fn process_eval_module(
 }
 
 #[rustler::nif(schedule = "DirtyCpu")]
-fn runtime_new(base_dir: String, cache_dir: String) -> Result<ResourceArc<RuntimeResource>, String> {
+fn runtime_new(
+    base_dir: String,
+    cache_dir: String,
+) -> Result<ResourceArc<RuntimeResource>, String> {
     let (tx, rx) = mpsc::channel::<Command>();
 
     // Spawn a dedicated thread for this V8 isolate.
@@ -208,11 +212,8 @@ fn runtime_new(base_dir: String, cache_dir: String) -> Result<ResourceArc<Runtim
         } else {
             std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("/"))
         };
-        let script_url =
-            deno_core::url::Url::from_file_path(base.join("__denox_async.js"))
-                .unwrap_or_else(|_| {
-                    deno_core::url::Url::parse("file:///denox_async.js").unwrap()
-                });
+        let script_url = deno_core::url::Url::from_file_path(base.join("__denox_async.js"))
+            .unwrap_or_else(|_| deno_core::url::Url::parse("file:///denox_async.js").unwrap());
         let script_name: &'static str = Box::leak(script_url.to_string().into_boxed_str());
 
         let loader_cache_dir = if cache_dir.is_empty() {
@@ -223,9 +224,9 @@ fn runtime_new(base_dir: String, cache_dir: String) -> Result<ResourceArc<Runtim
 
         let mut runtime = tokio_rt.block_on(async {
             JsRuntime::new(RuntimeOptions {
-                module_loader: Some(std::rc::Rc::new(
-                    ts_loader::TsModuleLoader::new(loader_cache_dir),
-                )),
+                module_loader: Some(std::rc::Rc::new(ts_loader::TsModuleLoader::new(
+                    loader_cache_dir,
+                ))),
                 ..Default::default()
             })
         });
@@ -245,13 +246,8 @@ fn runtime_new(base_dir: String, cache_dir: String) -> Result<ResourceArc<Runtim
                     transpile,
                     reply,
                 } => {
-                    let result = process_eval_async(
-                        &mut runtime,
-                        &tokio_rt,
-                        code,
-                        transpile,
-                        script_name,
-                    );
+                    let result =
+                        process_eval_async(&mut runtime, &tokio_rt, code, transpile, script_name);
                     let _ = reply.send(result);
                 }
                 Command::EvalModule { path, reply } => {
@@ -307,10 +303,7 @@ fn eval_async(
 }
 
 #[rustler::nif(schedule = "DirtyCpu")]
-fn eval_module(
-    resource: ResourceArc<RuntimeResource>,
-    path: String,
-) -> Result<String, String> {
+fn eval_module(resource: ResourceArc<RuntimeResource>, path: String) -> Result<String, String> {
     send_command(&resource, |reply| Command::EvalModule { path, reply })
 }
 

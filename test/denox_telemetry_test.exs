@@ -13,13 +13,23 @@ defmodule DenoxTelemetryTest do
       start_id = "test-start-#{System.unique_integer([:positive])}"
       stop_id = "test-stop-#{System.unique_integer([:positive])}"
 
-      :telemetry.attach(start_id, [:denox, :eval, :start], fn _event, measurements, metadata, _config ->
-        send(pid, {:start, measurements, metadata})
-      end, nil)
+      :telemetry.attach(
+        start_id,
+        [:denox, :eval, :start],
+        fn _event, measurements, metadata, _config ->
+          send(pid, {:start, measurements, metadata})
+        end,
+        nil
+      )
 
-      :telemetry.attach(stop_id, [:denox, :eval, :stop], fn _event, measurements, metadata, _config ->
-        send(pid, {:stop, measurements, metadata})
-      end, nil)
+      :telemetry.attach(
+        stop_id,
+        [:denox, :eval, :stop],
+        fn _event, measurements, metadata, _config ->
+          send(pid, {:stop, measurements, metadata})
+        end,
+        nil
+      )
 
       {:ok, "3"} = Denox.eval(rt, "1 + 2")
 
@@ -36,9 +46,14 @@ defmodule DenoxTelemetryTest do
       pid = self()
       handler_id = "test-exception-#{System.unique_integer([:positive])}"
 
-      :telemetry.attach(handler_id, [:denox, :eval, :exception], fn _event, measurements, metadata, _config ->
-        send(pid, {:exception, measurements, metadata})
-      end, nil)
+      :telemetry.attach(
+        handler_id,
+        [:denox, :eval, :exception],
+        fn _event, measurements, metadata, _config ->
+          send(pid, {:exception, measurements, metadata})
+        end,
+        nil
+      )
 
       {:error, _} = Denox.eval(rt, "throw new Error('boom')")
 
@@ -52,9 +67,14 @@ defmodule DenoxTelemetryTest do
       pid = self()
       handler_id = "test-eval-ts-#{System.unique_integer([:positive])}"
 
-      :telemetry.attach(handler_id, [:denox, :eval, :stop], fn _event, _measurements, metadata, _config ->
-        send(pid, {:type, metadata.type})
-      end, nil)
+      :telemetry.attach(
+        handler_id,
+        [:denox, :eval, :stop],
+        fn _event, _measurements, metadata, _config ->
+          send(pid, {:type, metadata.type})
+        end,
+        nil
+      )
 
       {:ok, "42"} = Denox.eval_ts(rt, "const x: number = 42; x")
 
@@ -67,9 +87,14 @@ defmodule DenoxTelemetryTest do
       pid = self()
       handler_id = "test-eval-async-#{System.unique_integer([:positive])}"
 
-      :telemetry.attach(handler_id, [:denox, :eval, :stop], fn _event, _measurements, metadata, _config ->
-        send(pid, {:type, metadata.type})
-      end, nil)
+      :telemetry.attach(
+        handler_id,
+        [:denox, :eval, :stop],
+        fn _event, _measurements, metadata, _config ->
+          send(pid, {:type, metadata.type})
+        end,
+        nil
+      )
 
       {:ok, "99"} = Denox.eval_async(rt, "return await Promise.resolve(99)")
 

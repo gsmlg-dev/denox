@@ -105,7 +105,13 @@ impl TsModuleLoader {
             // Simple hash: replace non-alphanumeric chars with underscores, truncate
             let safe_name: String = url
                 .chars()
-                .map(|c| if c.is_alphanumeric() || c == '.' || c == '-' { c } else { '_' })
+                .map(|c| {
+                    if c.is_alphanumeric() || c == '.' || c == '-' {
+                        c
+                    } else {
+                        '_'
+                    }
+                })
                 .collect();
             // Truncate to avoid filesystem path length limits
             let name = if safe_name.len() > 200 {
@@ -212,10 +218,7 @@ impl TsModuleLoader {
             .map_err(|e| anyhow::anyhow!("HTTP fetch error for {}: {}", specifier, e))?;
 
         // Determine media type from Content-Type header, fall back to URL extension
-        let content_type = response
-            .header("Content-Type")
-            .unwrap_or("")
-            .to_string();
+        let content_type = response.header("Content-Type").unwrap_or("").to_string();
         let media_type_from_ct = Self::media_type_from_content_type(&content_type);
         let media_type = if media_type_from_ct == MediaType::Unknown {
             Self::media_type_from_specifier(specifier)
@@ -229,9 +232,9 @@ impl TsModuleLoader {
             ModuleType::JavaScript
         };
 
-        let source = response
-            .into_string()
-            .map_err(|e| anyhow::anyhow!("Failed to read response body from {}: {}", specifier, e))?;
+        let source = response.into_string().map_err(|e| {
+            anyhow::anyhow!("Failed to read response body from {}: {}", specifier, e)
+        })?;
 
         // Transpile if needed
         let code = if Self::needs_transpile(media_type) {

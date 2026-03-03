@@ -6,8 +6,9 @@ defmodule Denox.Native do
     crate: "denox_nif",
     base_url: "https://github.com/gsmlg-dev/denox/releases/download/v#{version}",
     version: version,
-    force_build: System.get_env("DENOX_BUILD") in ["1", "true"] or
-                   Application.compile_env(:denox, :force_build, false)
+    force_build:
+      System.get_env("DENOX_BUILD") in ["1", "true"] or
+        Application.compile_env(:denox, :force_build, false)
 
   def runtime_new(_base_dir, _cache_dir), do: :erlang.nif_error(:nif_not_loaded)
   def eval(_resource, _code, _transpile), do: :erlang.nif_error(:nif_not_loaded)

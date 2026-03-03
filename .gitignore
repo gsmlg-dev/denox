@@ -14,6 +14,9 @@ denox-*.tar
 
 # Denox runtime artifacts
 /_denox/
+/node_modules/
+/vendor/
+deno.lock
 
 # IDE
 .idea/
