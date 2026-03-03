@@ -42,5 +42,18 @@ defmodule DenoxSandboxTest do
       {:ok, rt} = Denox.runtime()
       assert {:ok, "3"} = Denox.eval(rt, "1 + 2")
     end
+
+    test "sandbox strips extensions (callback op unavailable)" do
+      {:ok, rt} = Denox.runtime(sandbox: true)
+      # In sandbox mode, extensions are stripped so callback op is not registered
+      assert {:error, _} = Denox.eval(rt, "Deno.core.ops.op_elixir_call('test', '[]')")
+    end
+
+    test "non-sandbox with callbacks has callback op available" do
+      handler = spawn(fn -> Process.sleep(:infinity) end)
+      {:ok, rt} = Denox.runtime(callback_pid: handler)
+      # The callback op should be registered
+      assert {:ok, "\"function\""} = Denox.eval(rt, "typeof Deno.core.ops.op_elixir_call")
+    end
   end
 end

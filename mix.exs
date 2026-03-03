@@ -52,7 +52,7 @@ defmodule Denox.MixProject do
       source_url: @source_url,
       extras: ["README.md", "DENOX_DESIGN.md"],
       groups_for_modules: [
-        Core: [Denox],
+        Core: [Denox, Denox.CallbackHandler],
         Pool: [Denox.Pool],
         Dependencies: [Denox.Deps, Denox.Npm],
         Internal: [Denox.Native]

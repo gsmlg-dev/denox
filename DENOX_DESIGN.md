@@ -110,7 +110,7 @@ Dependency Management (build-time only):
 
 `deno_core` and `deno_ast` versions must be compatible. The Deno monorepo's `Cargo.lock` is the source of truth. As of early 2026, approximate compatible versions:
 
-- `deno_core` ~0.311+ and `deno_ast` ~0.43+ share compatible `v8` crate versions
+- `deno_core` ~0.311+ and `deno_ast` ~0.53+ share compatible `v8` crate versions
 - `serde_v8` may be re-exported from `deno_core` or need a separate dependency depending on version
 
 **Build time warning:** First compile takes ~20-30 minutes because V8 compiles from source. V8 requires at least `-O1` even in debug profile (add `[profile.dev.package.v8] opt-level = 1` to Cargo.toml).

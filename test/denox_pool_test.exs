@@ -40,10 +40,11 @@ defmodule DenoxPoolTest do
       assert {:ok, %{"a" => 1}} = Denox.Pool.eval_decode(pool, "({a: 1})")
     end
 
-    test "call invokes function", %{pool: pool} do
+    test "call invokes function" do
+      pool = :"test_pool_call_#{:erlang.unique_integer([:positive])}"
+      start_supervised!({Denox.Pool, name: pool, size: 1})
       Denox.Pool.exec(pool, "globalThis.double = (n) => n * 2")
-      # Note: function defined in one runtime via round-robin, need to call same one
-      # For this test, use size=1 pool
+      assert {:ok, "10"} = Denox.Pool.call(pool, "double", [5])
     end
   end
 
