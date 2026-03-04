@@ -38,6 +38,7 @@ defmodule Denox.MixProject do
         ".formatter.exs",
         "mix.exs",
         "README.md",
+        "CHANGELOG.md",
         "LICENSE"
       ],
       licenses: ["MIT"],
@@ -50,7 +51,7 @@ defmodule Denox.MixProject do
       main: "readme",
       source_ref: "v#{@version}",
       source_url: @source_url,
-      extras: ["README.md", "DENOX_DESIGN.md"],
+      extras: ["README.md", "CHANGELOG.md", "DENOX_DESIGN.md"],
       groups_for_modules: [
         Core: [Denox, Denox.CallbackHandler],
         Pool: [Denox.Pool],

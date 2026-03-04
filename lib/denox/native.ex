@@ -6,6 +6,13 @@ defmodule Denox.Native do
     crate: "denox_nif",
     base_url: "https://github.com/gsmlg-dev/denox/releases/download/v#{version}",
     version: version,
+    targets: [
+      "aarch64-apple-darwin",
+      "x86_64-apple-darwin",
+      "x86_64-unknown-linux-gnu",
+      "aarch64-unknown-linux-gnu"
+    ],
+    nif_versions: ["2.16", "2.17"],
     force_build:
       System.get_env("DENOX_BUILD") in ["1", "true"] or
         Application.compile_env(:denox, :force_build, false)
