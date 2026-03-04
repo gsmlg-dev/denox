@@ -18,5 +18,9 @@ url = "2"
 anyhow = "1"
 ureq = "2"
 
+[features]
+nif_version_2_16 = []
+nif_version_2_17 = []
+
 [profile.dev.package.v8]
 opt-level = 1
