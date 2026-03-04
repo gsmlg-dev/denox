@@ -1,16 +1,42 @@
-name: Build precompiled NIFs
+name: Release
 
 on:
-  push:
-    tags:
-      - "v*"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Release version (e.g. 0.2.0)"
+        required: true
+        type: string
 
 permissions:
   contents: write
 
 jobs:
+  prepare:
+    name: Prepare release v${{ inputs.version }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Update version in mix.exs
+        run: sed -i 's/@version ".*"/@version "${{ inputs.version }}"/' mix.exs
+
+      - name: Update version in Cargo.toml
+        run: sed -i 's/^version = ".*"/version = "${{ inputs.version }}"/' native/denox_nif/Cargo.toml
+
+      - name: Commit and tag
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add mix.exs native/denox_nif/Cargo.toml
+          git commit -m "chore: bump version to ${{ inputs.version }}"
+          git tag "v${{ inputs.version }}"
+          git push origin HEAD:main
+          git push origin "v${{ inputs.version }}"
+
   build_release:
     name: NIF ${{ matrix.nif }} - ${{ matrix.job.target }}
+    needs: prepare
     runs-on: ${{ matrix.job.os }}
     strategy:
       fail-fast: false
@@ -24,6 +50,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: v${{ inputs.version }}
 
       - name: Set up Elixir
         uses: erlef/setup-beam@v1
@@ -31,65 +59,62 @@ jobs:
           elixir-version: "1.17"
           otp-version: "27.0"
 
-      - name: Set up Rust
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: ${{ matrix.job.target }}
-
-      - name: Install cross-compilation tools
-        if: matrix.job.cross
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y gcc-aarch64-linux-gnu g++-aarch64-linux-gnu
-
-      - name: Cache Rust dependencies
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            native/denox_nif/target
-          key: precomp-${{ matrix.job.target }}-${{ hashFiles('native/denox_nif/Cargo.lock') }}
-          restore-keys: |
-            precomp-${{ matrix.job.target }}-
-
       - name: Install Elixir dependencies
         run: mix deps.get
 
       - name: Build precompiled NIF
-        run: |
-          export RUSTLER_NIF_VERSION=${{ matrix.nif }}
-          export CARGO_BUILD_TARGET=${{ matrix.job.target }}
-          if [ "${{ matrix.job.cross }}" = "true" ]; then
-            export CC_aarch64_unknown_linux_gnu=aarch64-linux-gnu-gcc
-            export CXX_aarch64_unknown_linux_gnu=aarch64-linux-gnu-g++
-            export CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc
-          fi
-          mix rustler_precompiled.build Denox.Native \
-            --target ${{ matrix.job.target }} \
-            --nif-version ${{ matrix.nif }}
+        uses: philss/rustler-precompiled-action@v1.1.4
+        with:
+          project-name: denox_nif
+          project-dir: native/denox_nif
+          target: ${{ matrix.job.target }}
+          nif-version: ${{ matrix.nif }}
+          use-cross: ${{ matrix.job.cross || false }}
+          project-version: ${{ inputs.version }}
 
       - name: Upload NIF artifact
         uses: actions/upload-artifact@v4
         with:
           name: nif-${{ matrix.job.target }}-nif${{ matrix.nif }}
-          path: native/denox_nif/target/${{ matrix.job.target }}/release/*.tar.gz
+          path: _build/artifacts/**
 
-  publish_release:
-    name: Publish GitHub Release
+      - name: Attach to GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ inputs.version }}
+          files: _build/artifacts/**
+
+  publish_hex:
+    name: Publish to Hex
     needs: build_release
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: v${{ inputs.version }}
 
-      - name: Download all artifacts
+      - name: Set up Elixir
+        uses: erlef/setup-beam@v1
+        with:
+          elixir-version: "1.17"
+          otp-version: "27.0"
+
+      - name: Install dependencies
+        run: mix deps.get
+
+      - name: Download all NIF artifacts
         uses: actions/download-artifact@v4
         with:
-          path: artifacts
+          path: _build/artifacts
           pattern: nif-*
           merge-multiple: true
 
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
-        with:
-          files: artifacts/**/*.tar.gz
+      - name: Generate checksum file
+        run: mix rustler_precompiled.download Denox.Native --all --print
+        env:
+          DENOX_BUILD: false
+
+      - name: Publish to Hex
+        run: mix hex.publish --yes
+        env:
+          HEX_API_KEY: ${{ secrets.HEX_API_KEY }}
