@@ -49,7 +49,4 @@ pub fn op_elixir_call(
     result.map_err(|e| anyhow::anyhow!("{}", e))
 }
 
-deno_core::extension!(
-    denox_callback_ext,
-    ops = [op_elixir_call],
-);
+deno_core::extension!(denox_callback_ext, ops = [op_elixir_call],);

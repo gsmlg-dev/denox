@@ -15,7 +15,8 @@ defmodule DenoxSnapshotTest do
 
     test "creates a snapshot from TypeScript code with transpile option" do
       assert {:ok, snapshot} =
-               Denox.create_snapshot("globalThis.greet = (name: string): string => `Hello, ${name}!`",
+               Denox.create_snapshot(
+                 "globalThis.greet = (name: string): string => `Hello, ${name}!`",
                  transpile: true
                )
 

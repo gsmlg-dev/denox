@@ -213,15 +213,18 @@ fn process_eval_module(
 
 /// Create a V8 snapshot from setup code. Returns the snapshot as a binary.
 #[rustler::nif(schedule = "DirtyCpu")]
-fn create_snapshot<'a>(env: Env<'a>, setup_code: String, transpile: bool) -> Result<Binary<'a>, String> {
+fn create_snapshot<'a>(
+    env: Env<'a>,
+    setup_code: String,
+    transpile: bool,
+) -> Result<Binary<'a>, String> {
     let js_code = if transpile {
         transpile_inline(&setup_code)?
     } else {
         setup_code
     };
 
-    let mut runtime =
-        deno_core::JsRuntimeForSnapshot::new(RuntimeOptions::default());
+    let mut runtime = deno_core::JsRuntimeForSnapshot::new(RuntimeOptions::default());
 
     runtime
         .execute_script("<denox_snapshot>", js_code)
@@ -495,7 +498,11 @@ fn eval_async(
 }
 
 #[rustler::nif(schedule = "DirtyCpu")]
-fn eval_module(env: Env, resource: ResourceArc<RuntimeResource>, path: String) -> Result<String, String> {
+fn eval_module(
+    env: Env,
+    resource: ResourceArc<RuntimeResource>,
+    path: String,
+) -> Result<String, String> {
     send_command(env, &resource, |reply| Command::EvalModule { path, reply })
 }
 

@@ -65,9 +65,7 @@ defmodule Denox.CallbackTest do
   describe "callback error handling" do
     test "unknown callback name returns error" do
       {:ok, rt, _handler} =
-        CallbackHandler.runtime(
-          callbacks: %{"known" => fn _ -> :ok end}
-        )
+        CallbackHandler.runtime(callbacks: %{"known" => fn _ -> :ok end})
 
       {:error, msg} = Denox.eval(rt, ~s[Denox.callback("unknown_fn")])
       assert msg =~ "Unknown callback"

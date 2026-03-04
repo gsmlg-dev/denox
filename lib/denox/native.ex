@@ -26,6 +26,9 @@ defmodule Denox.Native do
   def eval_async(_resource, _code, _transpile), do: :erlang.nif_error(:nif_not_loaded)
   def eval_module(_resource, _path), do: :erlang.nif_error(:nif_not_loaded)
   def call_function(_resource, _name, _args_json), do: :erlang.nif_error(:nif_not_loaded)
-  def callback_reply(_resource, _callback_id, _result_json), do: :erlang.nif_error(:nif_not_loaded)
+
+  def callback_reply(_resource, _callback_id, _result_json),
+    do: :erlang.nif_error(:nif_not_loaded)
+
   def callback_error(_resource, _callback_id, _error_msg), do: :erlang.nif_error(:nif_not_loaded)
 end
