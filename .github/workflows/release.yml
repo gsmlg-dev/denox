@@ -75,7 +75,7 @@ jobs:
           project-dir: native/denox_nif
           target: ${{ matrix.job.target }}
           nif-version: ${{ matrix.nif }}
-          use-cross: ${{ matrix.job.cross || false }}
+          use-cross: ${{ matrix.job.cross || '' }}
           project-version: ${{ inputs.version }}
 
       - name: Upload NIF artifact
