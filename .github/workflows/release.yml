@@ -145,11 +145,31 @@ jobs:
           pattern: nif-*
           merge-multiple: true
 
-      - name: List local NIF tarballs
-        run: ls -la *.tar.gz
+      - name: Generate checksum file before compilation
+        run: |
+          # RustlerPrecompiled needs a checksum file to exist BEFORE mix compile.
+          # Generate it from the local tar.gz files.
+          elixir -e '
+            checksums =
+              Path.wildcard("*.tar.gz")
+              |> Enum.map(fn file ->
+                content = File.read!(file)
+                hash = :crypto.hash(:sha256, content) |> Base.encode16(case: :lower)
+                {file, "sha256:#{hash}"}
+              end)
+              |> Map.new()
 
-      - name: Generate checksum file
-        run: mix rustler_precompiled.download Denox.Native --only-local --print
+            content = "%{\n" <> Enum.map_join(checksums, ",\n", fn {k, v} ->
+              ~s(  "#{k}" => "#{v}")
+            end) <> "\n}\n"
+
+            File.write!("checksum-Elixir.Denox.Native.exs", content)
+            IO.puts("Generated checksum file with #{map_size(checksums)} entries:")
+            Enum.each(checksums, fn {k, _v} -> IO.puts("  #{k}") end)
+          '
+
+      - name: Verify checksum file
+        run: cat checksum-Elixir.Denox.Native.exs
 
       - name: Publish to Hex
         run: mix hex.publish --yes
