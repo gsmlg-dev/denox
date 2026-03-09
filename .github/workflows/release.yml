@@ -88,44 +88,9 @@ jobs:
           name: nif-${{ matrix.job.target }}-nif${{ matrix.nif }}
           path: _build/artifacts/**
 
-  publish_hex:
-    name: Publish to Hex
-    needs: [prepare, build_release]
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: ${{ needs.prepare.outputs.commit_sha }}
-
-      - name: Set up Elixir
-        uses: erlef/setup-beam@v1
-        with:
-          elixir-version: "1.17"
-          otp-version: "27.0"
-
-      - name: Install dependencies
-        run: mix deps.get
-
-      - name: Download all NIF artifacts
-        uses: actions/download-artifact@v4
-        with:
-          path: _build/artifacts
-          pattern: nif-*
-          merge-multiple: true
-
-      - name: Generate checksum file
-        run: mix rustler_precompiled.download Denox.Native --all --print
-        env:
-          DENOX_BUILD: false
-
-      - name: Publish to Hex
-        run: mix hex.publish --yes
-        env:
-          HEX_API_KEY: ${{ secrets.HEX_API_KEY }}
-
   create_release:
     name: Create GitHub Release
-    needs: [prepare, build_release, publish_hex]
+    needs: [prepare, build_release]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -153,3 +118,31 @@ jobs:
           name: v${{ inputs.version }}
           generate_release_notes: true
           files: artifacts/**
+
+  publish_hex:
+    name: Publish to Hex
+    needs: [prepare, create_release]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.prepare.outputs.commit_sha }}
+
+      - name: Set up Elixir
+        uses: erlef/setup-beam@v1
+        with:
+          elixir-version: "1.17"
+          otp-version: "27.0"
+
+      - name: Install dependencies
+        run: mix deps.get
+
+      - name: Generate checksum file
+        run: mix rustler_precompiled.download Denox.Native --all --print
+        env:
+          DENOX_BUILD: false
+
+      - name: Publish to Hex
+        run: mix hex.publish --yes
+        env:
+          HEX_API_KEY: ${{ secrets.HEX_API_KEY }}
