@@ -1,0 +1,2 @@
+# Bun loads `.env` from the project root by default.
+# This repo uses that to expose `./deps` via `NODE_PATH`.

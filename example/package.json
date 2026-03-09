@@ -1,0 +1,6 @@
+{
+  "dependencies": {
+    "@duskmoon-dev/core": "latest",
+    "@duskmoon-dev/elements": "latest"
+  }
+}

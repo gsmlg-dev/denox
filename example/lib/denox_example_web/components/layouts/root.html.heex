@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="sunshine" class="[scrollbar-gutter:stable]">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="csrf-token" content={get_csrf_token()} />
+    <.live_title suffix=" - Denox">
+      {assigns[:page_title] || "Playground"}
+    </.live_title>
+    <link phx-track-static rel="stylesheet" href={~p"/assets/app.css"} />
+    <script defer phx-track-static type="text/javascript" src={~p"/assets/app.js"}>
+    </script>
+  </head>
+  <body class="bg-base-100 text-base-content min-h-screen">
+    <header class="sticky top-0 z-50 border-b border-base-300 bg-base-100/95 backdrop-blur-sm">
+      <div class="flex items-center justify-between px-4 h-14">
+        <span class="font-bold text-lg">Denox Playground</span>
+        <div class="flex items-center gap-3">
+          <.dm_theme_switcher id="theme-switcher" />
+          <.dm_link href="https://github.com/gsmlg-dev/denox" target="_blank">
+            <.dm_bsi name="github" class="w-5 h-5" />
+          </.dm_link>
+        </div>
+      </div>
+    </header>
+    {@inner_content}
+  </body>
+</html>

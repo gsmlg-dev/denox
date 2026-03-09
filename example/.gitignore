@@ -1,0 +1,8 @@
+/priv/static/assets/
+/deps/
+/_build/
+/node_modules/
+*.ez
+erl_crash.dump
+npm-debug.log
+/tmp/
