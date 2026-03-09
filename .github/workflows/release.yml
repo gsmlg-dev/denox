@@ -73,6 +73,7 @@ jobs:
         run: mix deps.get
 
       - name: Build precompiled NIF
+        id: build
         uses: philss/rustler-precompiled-action@v1.1.4
         with:
           project-name: denox_nif
@@ -86,7 +87,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: nif-${{ matrix.job.target }}-nif${{ matrix.nif }}
-          path: _build/artifacts/**
+          path: ${{ steps.build.outputs.file-path }}
 
   create_release:
     name: Create GitHub Release
@@ -111,13 +112,16 @@ jobs:
           pattern: nif-*
           merge-multiple: true
 
+      - name: List artifacts
+        run: find artifacts -type f
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v${{ inputs.version }}
           name: v${{ inputs.version }}
           generate_release_notes: true
-          files: artifacts/**
+          files: artifacts/*.tar.gz
 
   publish_hex:
     name: Publish to Hex
