@@ -24,3 +24,11 @@ deno.lock
 *.swp
 *.swo
 *~
+
+# devenv / Nix
+.devenv/
+.devenv.flake.nix
+devenv.lock
+.direnv/
+result
+result-*
