@@ -318,6 +318,71 @@ fn runtime_new(
             JsRuntime::new(opts)
         });
 
+        // Polyfill setTimeout/setInterval/clearTimeout/clearInterval
+        // deno_core alone does not include Web timer APIs.
+        let _ = runtime.execute_script(
+            "<denox_timer_polyfill>",
+            r#"
+            (function() {
+                var _nextId = 1;
+                var _timers = {};
+
+                globalThis.setTimeout = function(callback, delay) {
+                    var args = Array.prototype.slice.call(arguments, 2);
+                    var id = _nextId++;
+                    var promise = new Promise(function(resolve) {
+                        // Use a resolved promise chain to simulate async delay.
+                        // True ms-accurate delay requires a native op, but this
+                        // ensures the callback fires after the current microtask
+                        // queue is drained (sufficient for most use-cases).
+                        var p = Promise.resolve();
+                        if (delay > 0) {
+                            // Chain multiple microtask ticks for rough delay
+                            for (var i = 0; i < Math.min(delay, 100); i++) {
+                                p = p.then(function(){});
+                            }
+                        }
+                        p.then(function() {
+                            if (_timers[id]) {
+                                delete _timers[id];
+                                callback.apply(null, args);
+                            }
+                            resolve();
+                        });
+                    });
+                    _timers[id] = promise;
+                    return id;
+                };
+
+                globalThis.clearTimeout = function(id) {
+                    delete _timers[id];
+                };
+
+                globalThis.setInterval = function(callback, delay) {
+                    var args = Array.prototype.slice.call(arguments, 2);
+                    var id = _nextId++;
+                    function schedule() {
+                        _timers[id] = setTimeout(function() {
+                            if (_timers[id] !== undefined) {
+                                callback.apply(null, args);
+                                schedule();
+                            }
+                        }, delay);
+                    }
+                    schedule();
+                    return id;
+                };
+
+                globalThis.clearInterval = function(id) {
+                    if (_timers[id] !== undefined) {
+                        clearTimeout(_timers[id]);
+                        delete _timers[id];
+                    }
+                };
+            })();
+            "#,
+        );
+
         // Insert callback state into OpState if callbacks are enabled
         if has_callbacks {
             runtime.op_state().borrow_mut().put(CallbackState {
