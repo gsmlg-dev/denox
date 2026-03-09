@@ -44,7 +44,37 @@ defmodule DenoxExampleWeb.PlaygroundLive do
       doubled: data.map(x => x * 2),
       max: Math.max(...data)
     })\
-    """, "js", "sync"}
+    """, "js", "sync"},
+    "npm_import" => {"""
+    const { default: add } = await import("https://esm.sh/lodash-es@4.17.21/add");
+    const result = add(20, 22);
+    return result\
+    """, "js", "async"},
+    "npm_zod" => {"""
+    const { z } = await import("https://esm.sh/zod@3.22.4");
+
+    const UserSchema = z.object({
+      name: z.string(),
+      age: z.number().min(0),
+      email: z.string().email(),
+    });
+
+    const user = UserSchema.parse({
+      name: "Alice",
+      age: 30,
+      email: "alice@example.com",
+    });
+
+    return user\
+    """, "ts", "async"},
+    "jsr_import" => {"""
+    const { toCamelCase, toKebabCase, toSnakeCase } = await import("https://esm.sh/jsr/@std/text@1.0.9");
+    return {
+      camel: toCamelCase("hello world from jsr"),
+      kebab: toKebabCase("hello world from jsr"),
+      snake: toSnakeCase("hello world from jsr"),
+    }\
+    """, "js", "async"}
   }
 
   @impl true
