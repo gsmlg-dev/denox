@@ -112,9 +112,6 @@ jobs:
           pattern: nif-*
           merge-multiple: true
 
-      - name: List artifacts
-        run: find artifacts -type f
-
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
@@ -141,10 +138,18 @@ jobs:
       - name: Install dependencies
         run: mix deps.get
 
+      - name: Download NIF artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: .
+          pattern: nif-*
+          merge-multiple: true
+
+      - name: List local NIF tarballs
+        run: ls -la *.tar.gz
+
       - name: Generate checksum file
-        run: mix rustler_precompiled.download Denox.Native --all --print
-        env:
-          DENOX_BUILD: false
+        run: mix rustler_precompiled.download Denox.Native --only-local --print
 
       - name: Publish to Hex
         run: mix hex.publish --yes
