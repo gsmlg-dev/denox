@@ -230,6 +230,23 @@ defmodule Denox do
     end)
   end
 
+  # --- Await helper ---
+
+  @doc """
+  Await the result of an async evaluation task.
+
+  Delegates to `Task.await/2`. Use with tasks returned by
+  `eval_async/2`, `eval_ts_async/2`, `call_async/3`, and `call_async_decode/3`.
+
+  ## Example
+
+      Denox.eval_async(rt, "return await Promise.resolve(42)")
+      |> Denox.await()
+      #=> {:ok, "42"}
+
+  """
+  defdelegate await(task, timeout \\ 5000), to: Task
+
   # --- Decode variants ---
 
   @doc """
