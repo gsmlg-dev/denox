@@ -128,7 +128,7 @@ defmodule Denox.Deps do
     with :ok <- check_config(config) do
       case File.read(config) do
         {:ok, content} ->
-          case Jason.decode(content) do
+          case Denox.JSON.decode(content) do
             {:ok, %{"imports" => imports}} when is_map(imports) ->
               {:ok, imports}
 
@@ -202,16 +202,16 @@ defmodule Denox.Deps do
     if File.exists?(config) do
       :ok
     else
-      File.write(config, Jason.encode!(%{"imports" => %{}}, pretty: true))
+      File.write(config, Denox.JSON.encode_pretty!(%{"imports" => %{}}))
     end
   end
 
   defp ensure_vendor_config(config) do
     with {:ok, content} <- File.read(config),
-         {:ok, json} <- Jason.decode(content) do
+         {:ok, json} <- Denox.JSON.decode(content) do
       unless Map.get(json, "vendor") == true do
         updated = Map.put(json, "vendor", true)
-        File.write!(config, Jason.encode!(updated, pretty: true))
+        File.write!(config, Denox.JSON.encode_pretty!(updated))
       end
 
       :ok
@@ -231,10 +231,10 @@ defmodule Denox.Deps do
 
   defp add_to_config(config, name, specifier) do
     with {:ok, content} <- File.read(config),
-         {:ok, json} <- Jason.decode(content) do
+         {:ok, json} <- Denox.JSON.decode(content) do
       imports = Map.get(json, "imports", %{})
       updated = Map.put(json, "imports", Map.put(imports, name, specifier))
-      File.write(config, Jason.encode!(updated, pretty: true))
+      File.write(config, Denox.JSON.encode_pretty!(updated))
     else
       _ -> {:error, "Failed to update #{config}"}
     end
@@ -242,10 +242,10 @@ defmodule Denox.Deps do
 
   defp remove_from_config(config, name) do
     with {:ok, content} <- File.read(config),
-         {:ok, json} <- Jason.decode(content) do
+         {:ok, json} <- Denox.JSON.decode(content) do
       imports = Map.get(json, "imports", %{})
       updated = Map.put(json, "imports", Map.delete(imports, name))
-      File.write(config, Jason.encode!(updated, pretty: true))
+      File.write(config, Denox.JSON.encode_pretty!(updated))
     else
       _ -> {:error, "Failed to update #{config}"}
     end

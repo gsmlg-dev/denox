@@ -65,7 +65,7 @@ defmodule Denox.MixProject do
     [
       {:rustler, "~> 0.36", optional: true},
       {:rustler_precompiled, "~> 0.8"},
-      {:jason, "~> 1.4"},
+      {:jason, "~> 1.4", optional: true},
       {:telemetry, "~> 1.0"},
       {:ex_doc, "~> 0.34", only: :dev, runtime: false},
       {:benchee, "~> 1.0", only: :dev, runtime: false}

@@ -47,7 +47,7 @@ defmodule Denox do
     import_map_json =
       case Keyword.get(opts, :import_map) do
         nil -> ""
-        map when is_map(map) -> Jason.encode!(map)
+        map when is_map(map) -> Denox.JSON.encode!(map)
       end
 
     Native.runtime_new(base_dir, sandbox, cache_dir, import_map_json, callback_pid, snapshot)
@@ -209,7 +209,7 @@ defmodule Denox do
   """
   @spec call(runtime(), String.t(), list()) :: {:ok, String.t()} | {:error, String.t()}
   def call(rt, func_name, args \\ []) do
-    args_json = Jason.encode!(args)
+    args_json = Denox.JSON.encode!(args)
     Native.call_function(rt, func_name, args_json)
   end
 
@@ -222,7 +222,7 @@ defmodule Denox do
   """
   @spec call_async(runtime(), String.t(), list()) :: Task.t()
   def call_async(rt, func_name, args \\ []) do
-    args_json = Jason.encode!(args)
+    args_json = Denox.JSON.encode!(args)
     code = "return await ((args) => #{func_name}(...args))(#{args_json})"
 
     Task.async(fn ->
@@ -254,7 +254,7 @@ defmodule Denox do
   """
   @spec eval_decode(runtime(), String.t()) :: {:ok, term()} | {:error, term()}
   def eval_decode(rt, code) do
-    with {:ok, json} <- eval(rt, code), do: Jason.decode(json)
+    with {:ok, json} <- eval(rt, code), do: Denox.JSON.decode(json)
   end
 
   @doc """
@@ -262,7 +262,7 @@ defmodule Denox do
   """
   @spec eval_ts_decode(runtime(), String.t()) :: {:ok, term()} | {:error, term()}
   def eval_ts_decode(rt, code) do
-    with {:ok, json} <- eval_ts(rt, code), do: Jason.decode(json)
+    with {:ok, json} <- eval_ts(rt, code), do: Denox.JSON.decode(json)
   end
 
   @doc """
@@ -270,7 +270,7 @@ defmodule Denox do
   """
   @spec call_decode(runtime(), String.t(), list()) :: {:ok, term()} | {:error, term()}
   def call_decode(rt, func_name, args \\ []) do
-    with {:ok, json} <- call(rt, func_name, args), do: Jason.decode(json)
+    with {:ok, json} <- call(rt, func_name, args), do: Denox.JSON.decode(json)
   end
 
   @doc """
@@ -280,11 +280,11 @@ defmodule Denox do
   """
   @spec call_async_decode(runtime(), String.t(), list()) :: Task.t()
   def call_async_decode(rt, func_name, args \\ []) do
-    args_json = Jason.encode!(args)
+    args_json = Denox.JSON.encode!(args)
     code = "return await ((args) => #{func_name}(...args))(#{args_json})"
 
     Task.async(fn ->
-      with {:ok, json} <- Native.eval_async(rt, code, false), do: Jason.decode(json)
+      with {:ok, json} <- Native.eval_async(rt, code, false), do: Denox.JSON.decode(json)
     end)
   end
 
@@ -296,7 +296,7 @@ defmodule Denox do
   @spec eval_async_decode(runtime(), String.t()) :: Task.t()
   def eval_async_decode(rt, code) do
     Task.async(fn ->
-      with {:ok, json} <- eval_async(rt, code) |> await(:infinity), do: Jason.decode(json)
+      with {:ok, json} <- eval_async(rt, code) |> await(:infinity), do: Denox.JSON.decode(json)
     end)
   end
 
@@ -308,7 +308,7 @@ defmodule Denox do
   @spec eval_ts_async_decode(runtime(), String.t()) :: Task.t()
   def eval_ts_async_decode(rt, code) do
     Task.async(fn ->
-      with {:ok, json} <- eval_ts_async(rt, code) |> await(:infinity), do: Jason.decode(json)
+      with {:ok, json} <- eval_ts_async(rt, code) |> await(:infinity), do: Denox.JSON.decode(json)
     end)
   end
 
@@ -336,7 +336,7 @@ defmodule Denox do
   """
   @spec eval_file_decode(runtime(), String.t(), keyword()) :: {:ok, term()} | {:error, term()}
   def eval_file_decode(rt, path, opts \\ []) do
-    with {:ok, json} <- eval_file(rt, path, opts), do: Jason.decode(json)
+    with {:ok, json} <- eval_file(rt, path, opts), do: Denox.JSON.decode(json)
   end
 
   @doc """
@@ -347,7 +347,7 @@ defmodule Denox do
   @spec eval_file_async_decode(runtime(), String.t(), keyword()) :: Task.t()
   def eval_file_async_decode(rt, path, opts \\ []) do
     Task.async(fn ->
-      with {:ok, json} <- eval_file_async(rt, path, opts) |> await(:infinity), do: Jason.decode(json)
+      with {:ok, json} <- eval_file_async(rt, path, opts) |> await(:infinity), do: Denox.JSON.decode(json)
     end)
   end
 

@@ -83,9 +83,9 @@ defmodule Denox.CallbackHandler do
 
       fun when is_function(fun) ->
         try do
-          args = Jason.decode!(args_json)
+          args = Denox.JSON.decode!(args_json)
           result = fun.(args)
-          result_json = Jason.encode!(result)
+          result_json = Denox.JSON.encode!(result)
           Native.callback_reply(resource, callback_id, result_json)
         rescue
           e ->
