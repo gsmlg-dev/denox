@@ -1,4 +1,5 @@
 mod callback_op;
+mod timer_op;
 mod ts_loader;
 
 use callback_op::{CallbackRequest, CallbackState};
@@ -282,6 +283,10 @@ fn runtime_new(
                 ..Default::default()
             };
 
+            // Register the timer extension for real setTimeout/setInterval
+            opts.extensions
+                .push(timer_op::denox_timer_ext::init_ops());
+
             // Register the callback extension if callbacks are enabled
             if has_callbacks {
                 opts.extensions
@@ -297,7 +302,7 @@ fn runtime_new(
         });
 
         // Polyfill setTimeout/setInterval/clearTimeout/clearInterval
-        // deno_core alone does not include Web timer APIs.
+        // Uses the native op_sleep async op for real ms-accurate delays.
         let _ = runtime.execute_script(
             "<denox_timer_polyfill>",
             r#"
@@ -308,26 +313,17 @@ fn runtime_new(
                 globalThis.setTimeout = function(callback, delay) {
                     var args = Array.prototype.slice.call(arguments, 2);
                     var id = _nextId++;
-                    var promise = new Promise(function(resolve) {
-                        // Use a resolved promise chain to simulate async delay.
-                        // True ms-accurate delay requires a native op, but this
-                        // ensures the callback fires after the current microtask
-                        // queue is drained (sufficient for most use-cases).
-                        var p = Promise.resolve();
+                    var promise = (async function() {
                         if (delay > 0) {
-                            // Chain multiple microtask ticks for rough delay
-                            for (var i = 0; i < Math.min(delay, 100); i++) {
-                                p = p.then(function(){});
-                            }
+                            await Deno.core.ops.op_sleep(delay);
+                        } else {
+                            await Promise.resolve();
                         }
-                        p.then(function() {
-                            if (_timers[id]) {
-                                delete _timers[id];
-                                callback.apply(null, args);
-                            }
-                            resolve();
-                        });
-                    });
+                        if (_timers[id]) {
+                            delete _timers[id];
+                            callback.apply(null, args);
+                        }
+                    })();
                     _timers[id] = promise;
                     return id;
                 };
@@ -382,6 +378,10 @@ fn runtime_new(
                 "#,
             );
         }
+
+        // Enter the tokio runtime context so that async ops (e.g. op_sleep)
+        // can access the reactor when spawned during execute_script.
+        let _tokio_guard = tokio_rt.enter();
 
         while let Ok(cmd) = rx.recv() {
             match cmd {
