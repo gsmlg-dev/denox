@@ -1,5 +1,67 @@
 # Changelog
 
+## v0.3.1 (unreleased)
+
+### Features
+
+- **Real `setTimeout`** — native `op_sleep` async op for millisecond-accurate delays in `setTimeout`/`setInterval`
+- **Convenience functions** — added `eval_async_decode`, `eval_ts_async_decode`, `eval_file_async`, `eval_file_decode`, `eval_file_async_decode` for cleaner API
+- **Non-blocking LiveView** — example app uses `Task.start` + `handle_info` for async eval to avoid blocking LiveView during long operations
+
+### Fixes
+
+- Fixed `setTimeout` returning immediately instead of waiting for the specified delay
+
+## v0.3.0
+
+### Breaking Changes
+
+- `Denox.eval_async/2`, `Denox.eval_ts_async/2`, `Denox.call_async/3`, `Denox.call_async_decode/3` now return `Task.t()` instead of `{:ok, result} | {:error, message}`. Call `Denox.await(task)` to get the result.
+- `Denox.eval/2` now pumps the event loop (supports Promises and dynamic imports in sync mode)
+
+### Features
+
+- **Unified event loop pumping** — all eval modes now pump the event loop, making sync and async consistent
+- **Task-based async API** — true concurrency with proper task management
+- **`Denox.await/2` helper** — delegates to `Task.await` for convenience
+
+### Playground Enhancements
+
+- Added Preact JSX SSR demo with real JSX syntax support
+- Added import map example showing bare specifier resolution
+- Display import map content above code editor
+- Fixed async examples to handle long CDN fetches without timing out
+
+## v0.2.2
+
+### Features
+
+- **JSX/TSX transpilation** — changed from `MediaType::TypeScript` to `MediaType::Tsx` for native JSX support
+- **`setTimeout` polyfill** — async-safe timer polyfill for microtask-based delays
+- **Preact SSR example** — server-side rendering via `preact-render-to-string`
+
+### Playground
+
+- 12 example snippets including Preact JSX SSR demo
+- CDN imports from esm.sh, esm.run, jsr
+- Zod schema validation example
+
+## v0.2.1
+
+### Features
+
+- **Multiple CDN examples** — lodash, Zod, JSR packages
+- **Import map support** — `Denox.runtime(import_map: %{...})` for bare specifier resolution
+- **Timer polyfill** — basic `setTimeout`/`setInterval` (microtask-based, no real delays)
+
+### Playground
+
+- 10 example snippets
+- Language toggle (JS/TS)
+- Mode toggle (Sync/Async)
+- Execution history with accordion view
+- Theme switcher
+
 ## v0.1.0
 
 Initial release.
