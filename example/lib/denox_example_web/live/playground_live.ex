@@ -93,13 +93,6 @@ defmodule DenoxExampleWeb.PlaygroundLive do
     return render(<App />)\
     """, "ts", "async"},
     "import_map" => {"""
-    // This runtime has an import map configured:
-    //   "lodash" => "https://esm.sh/lodash-es@4.17.21"
-    //   "preact" => "https://esm.sh/preact@10.25.4"
-    //   "preact-render-to-string" => "https://esm.sh/preact-render-to-string@6.5.13"
-    //
-    // So we can use bare specifiers instead of full URLs:
-
     const { default: add } = await import("lodash/add");
     const { default: multiply } = await import("lodash/multiply");
     const { default: capitalize } = await import("lodash/capitalize");
@@ -129,6 +122,7 @@ defmodule DenoxExampleWeb.PlaygroundLive do
        page_title: "Playground",
        runtime: rt,
        runtime_mapped: rt_mapped,
+       import_map: @import_map,
        code: "1 + 2",
        language: "js",
        mode: "sync",
@@ -227,6 +221,12 @@ defmodule DenoxExampleWeb.PlaygroundLive do
             {name |> String.replace("_", " ") |> String.capitalize()}
           </.dm_btn>
         </div>
+      </div>
+
+      <%!-- Import Map --%>
+      <div :if={@active_example == "import_map"} class="rounded-lg border border-base-300 bg-base-100 shadow-sm overflow-hidden">
+        <div class="px-4 py-3 border-b border-base-300 font-semibold text-sm">Import Map</div>
+        <pre class="font-mono text-xs bg-base-200 text-base-content p-4 whitespace-pre-wrap">{Jason.encode!(@import_map, pretty: true)}</pre>
       </div>
 
       <%!-- Code Editor --%>
