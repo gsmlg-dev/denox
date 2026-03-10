@@ -74,7 +74,24 @@ defmodule DenoxExampleWeb.PlaygroundLive do
       kebab: toKebabCase("hello world from jsr"),
       snake: toSnakeCase("hello world from jsr"),
     }\
-    """, "js", "async"}
+    """, "js", "async"},
+    "preact_ssr" => {"""
+    /** @jsx h */
+    const { h } = await import("https://esm.sh/preact@10.25.4");
+    const { render } = await import("https://esm.sh/preact-render-to-string@6.5.13");
+
+    const App = () => (
+      <div class="app">
+        <h1>Hello from Preact JSX!</h1>
+        <p>Server-side rendered via Denox</p>
+        <ul>
+          {["Denox", "Preact", "SSR"].map(item => <li key={item}>{item}</li>)}
+        </ul>
+      </div>
+    );
+
+    return render(<App />)\
+    """, "ts", "async"}
   }
 
   @impl true
