@@ -288,6 +288,69 @@ defmodule Denox do
     end)
   end
 
+  @doc """
+  Evaluate JavaScript code asynchronously and decode the JSON result.
+
+  Returns a `Task` that resolves to `{:ok, term()}` or `{:error, term()}`.
+  """
+  @spec eval_async_decode(runtime(), String.t()) :: Task.t()
+  def eval_async_decode(rt, code) do
+    Task.async(fn ->
+      with {:ok, json} <- eval_async(rt, code) |> await(:infinity), do: Jason.decode(json)
+    end)
+  end
+
+  @doc """
+  Evaluate TypeScript code asynchronously and decode the JSON result.
+
+  Returns a `Task` that resolves to `{:ok, term()}` or `{:error, term()}`.
+  """
+  @spec eval_ts_async_decode(runtime(), String.t()) :: Task.t()
+  def eval_ts_async_decode(rt, code) do
+    Task.async(fn ->
+      with {:ok, json} <- eval_ts_async(rt, code) |> await(:infinity), do: Jason.decode(json)
+    end)
+  end
+
+  @doc """
+  Read and evaluate a JavaScript or TypeScript file asynchronously.
+
+  Returns a `Task` that resolves to `{:ok, json_string}` or `{:error, message}`.
+  """
+  @spec eval_file_async(runtime(), String.t(), keyword()) :: Task.t()
+  def eval_file_async(rt, path, opts \\ []) do
+    transpile = Keyword.get(opts, :transpile, ts_extension?(path))
+
+    Task.async(fn ->
+      case File.read(path) do
+        {:ok, code} -> Native.eval_async(rt, code, transpile)
+        {:error, reason} -> {:error, "Failed to read #{path}: #{reason}"}
+      end |> await(:infinity)
+    end)
+  end
+
+  @doc """
+  Read and evaluate a JavaScript or TypeScript file and decode the JSON result.
+
+  Returns `{:ok, term()}` or `{:error, term()}`.
+  """
+  @spec eval_file_decode(runtime(), String.t(), keyword()) :: {:ok, term()} | {:error, term()}
+  def eval_file_decode(rt, path, opts \\ []) do
+    with {:ok, json} <- eval_file(rt, path, opts), do: Jason.decode(json)
+  end
+
+  @doc """
+  Read and evaluate a JavaScript or TypeScript file asynchronously and decode the JSON result.
+
+  Returns a `Task` that resolves to `{:ok, term()}` or `{:error, term()}`.
+  """
+  @spec eval_file_async_decode(runtime(), String.t(), keyword()) :: Task.t()
+  def eval_file_async_decode(rt, path, opts \\ []) do
+    Task.async(fn ->
+      with {:ok, json} <- eval_file_async(rt, path, opts) |> await(:infinity), do: Jason.decode(json)
+    end)
+  end
+
   # --- Private ---
 
   defp ts_extension?(path) do
