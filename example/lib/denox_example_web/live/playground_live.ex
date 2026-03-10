@@ -91,20 +91,48 @@ defmodule DenoxExampleWeb.PlaygroundLive do
     );
 
     return render(<App />)\
-    """, "ts", "async"}
+    """, "ts", "async"},
+    "import_map" => {"""
+    // This runtime has an import map configured:
+    //   "lodash" => "https://esm.sh/lodash-es@4.17.21"
+    //   "preact" => "https://esm.sh/preact@10.25.4"
+    //   "preact-render-to-string" => "https://esm.sh/preact-render-to-string@6.5.13"
+    //
+    // So we can use bare specifiers instead of full URLs:
+
+    const { default: add } = await import("lodash/add");
+    const { default: multiply } = await import("lodash/multiply");
+    const { default: capitalize } = await import("lodash/capitalize");
+
+    return {
+      add: add(10, 32),
+      multiply: multiply(6, 7),
+      capitalize: capitalize("hello from import map"),
+    }\
+    """, "js", "async"}
+  }
+
+  @import_map %{
+    "lodash" => "https://esm.sh/lodash-es@4.17.21",
+    "lodash/" => "https://esm.sh/lodash-es@4.17.21/",
+    "preact" => "https://esm.sh/preact@10.25.4",
+    "preact-render-to-string" => "https://esm.sh/preact-render-to-string@6.5.13"
   }
 
   @impl true
   def mount(_params, _session, socket) do
     {:ok, rt} = Denox.runtime()
+    {:ok, rt_mapped} = Denox.runtime(import_map: @import_map)
 
     {:ok,
      assign(socket,
        page_title: "Playground",
        runtime: rt,
+       runtime_mapped: rt_mapped,
        code: "1 + 2",
        language: "js",
        mode: "sync",
+       active_example: nil,
        result: nil,
        result_status: nil,
        history: [],
@@ -127,7 +155,12 @@ defmodule DenoxExampleWeb.PlaygroundLive do
   end
 
   def handle_event("run", _params, socket) do
-    %{runtime: rt, code: code, language: language, mode: mode} = socket.assigns
+    rt =
+      if socket.assigns.active_example == "import_map",
+        do: socket.assigns.runtime_mapped,
+        else: socket.assigns.runtime
+
+    %{code: code, language: language, mode: mode} = socket.assigns
 
     result =
       case {language, mode} do
@@ -165,7 +198,7 @@ defmodule DenoxExampleWeb.PlaygroundLive do
   def handle_event("load_example", %{"name" => name}, socket) do
     case Map.get(@examples, name) do
       {code, language, mode} ->
-        {:noreply, assign(socket, code: code, language: language, mode: mode)}
+        {:noreply, assign(socket, code: code, language: language, mode: mode, active_example: name)}
 
       nil ->
         {:noreply, socket}
