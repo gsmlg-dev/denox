@@ -60,13 +60,13 @@ fn transpile_inline(ts_code: &str) -> Result<String, String> {
         TranspileOptions,
     };
 
-    let specifier = deno_core::url::Url::parse("file:///denox_inline.ts")
+    let specifier = deno_core::url::Url::parse("file:///denox_inline.tsx")
         .map_err(|e| format!("URL parse error: {}", e))?;
 
     let parsed = deno_ast::parse_module(ParseParams {
         specifier,
         text: ts_code.into(),
-        media_type: MediaType::TypeScript,
+        media_type: MediaType::Tsx,
         capture_tokens: false,
         scope_analysis: false,
         maybe_syntax: None,
