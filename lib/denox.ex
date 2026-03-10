@@ -8,7 +8,7 @@ defmodule Denox do
 
     * `[:denox, :eval, :start]` — emitted before evaluating code
       * Measurements: `%{system_time: integer}`
-      * Metadata: `%{type: :eval | :eval_ts | :eval_async | :eval_ts_async | :eval_module | :eval_file}`
+      * Metadata: `%{type: :eval | :eval_ts | :eval_async | :eval_ts_async | :eval_module | :eval_file | :call}`
 
     * `[:denox, :eval, :stop]` — emitted after successful evaluation
       * Measurements: `%{duration: integer}` (native time units)
@@ -77,10 +77,13 @@ defmodule Denox do
     Native.create_snapshot(setup_code, transpile)
   end
 
-  # --- Synchronous eval (no event loop) ---
+  # --- Eval (pumps event loop, resolves Promises) ---
 
   @doc """
   Evaluate JavaScript code in the given runtime.
+
+  Pumps the event loop and resolves Promises automatically.
+  Supports `import()`, `setTimeout`, and other async operations.
 
   Returns `{:ok, json_string}` or `{:error, message}`.
   """
@@ -92,6 +95,8 @@ defmodule Denox do
   @doc """
   Evaluate TypeScript code in the given runtime.
   Transpiles via deno_ast/swc then evaluates. No type-checking.
+
+  Pumps the event loop and resolves Promises automatically.
 
   Returns `{:ok, json_string}` or `{:error, message}`.
   """
@@ -126,27 +131,39 @@ defmodule Denox do
     end
   end
 
-  # --- Async eval (pumps event loop — for import(), await, Promises) ---
+  # --- Async eval (returns Task for concurrent execution) ---
 
   @doc """
-  Evaluate JavaScript code asynchronously, pumping the event loop.
-  Use this for dynamic `import()`, `await`, and Promise-based code.
+  Evaluate JavaScript code asynchronously, returning a `Task`.
 
-  Returns `{:ok, json_string}` or `{:error, message}`.
+  The code is wrapped in an async IIFE, so `await` and `return` work
+  at the top level. Use `Task.await/2` to get the result.
+
+  Returns a `Task` that resolves to `{:ok, json_string}` or `{:error, message}`.
+
+  ## Example
+
+      task = Denox.eval_async(rt, "return await fetch('https://example.com').then(r => r.status)")
+      {:ok, "200"} = Task.await(task)
+
   """
-  @spec eval_async(runtime(), String.t()) :: {:ok, String.t()} | {:error, String.t()}
+  @spec eval_async(runtime(), String.t()) :: Task.t()
   def eval_async(rt, code) do
-    telemetry_span(:eval_async, fn -> Native.eval_async(rt, code, false) end)
+    Task.async(fn ->
+      telemetry_span(:eval_async, fn -> Native.eval_async(rt, code, false) end)
+    end)
   end
 
   @doc """
-  Evaluate TypeScript code asynchronously.
+  Evaluate TypeScript code asynchronously, returning a `Task`.
 
-  Returns `{:ok, json_string}` or `{:error, message}`.
+  Returns a `Task` that resolves to `{:ok, json_string}` or `{:error, message}`.
   """
-  @spec eval_ts_async(runtime(), String.t()) :: {:ok, String.t()} | {:error, String.t()}
+  @spec eval_ts_async(runtime(), String.t()) :: Task.t()
   def eval_ts_async(rt, code) do
-    telemetry_span(:eval_ts_async, fn -> Native.eval_async(rt, code, true) end)
+    Task.async(fn ->
+      telemetry_span(:eval_ts_async, fn -> Native.eval_async(rt, code, true) end)
+    end)
   end
 
   # --- Module loading ---
@@ -197,15 +214,20 @@ defmodule Denox do
   end
 
   @doc """
-  Call a named async JavaScript function with arguments.
+  Call a named async JavaScript function with arguments, returning a `Task`.
 
-  Returns `{:ok, json_string}` or `{:error, message}`.
+  Use `Task.await/2` to get the result.
+
+  Returns a `Task` that resolves to `{:ok, json_string}` or `{:error, message}`.
   """
-  @spec call_async(runtime(), String.t(), list()) :: {:ok, String.t()} | {:error, String.t()}
+  @spec call_async(runtime(), String.t(), list()) :: Task.t()
   def call_async(rt, func_name, args \\ []) do
     args_json = Jason.encode!(args)
     code = "return await ((args) => #{func_name}(...args))(#{args_json})"
-    Native.eval_async(rt, code, false)
+
+    Task.async(fn ->
+      Native.eval_async(rt, code, false)
+    end)
   end
 
   # --- Decode variants ---
@@ -236,10 +258,17 @@ defmodule Denox do
 
   @doc """
   Call a named async JavaScript function and decode the JSON result.
+
+  Returns a `Task` that resolves to `{:ok, term()}` or `{:error, term()}`.
   """
-  @spec call_async_decode(runtime(), String.t(), list()) :: {:ok, term()} | {:error, term()}
+  @spec call_async_decode(runtime(), String.t(), list()) :: Task.t()
   def call_async_decode(rt, func_name, args \\ []) do
-    with {:ok, json} <- call_async(rt, func_name, args), do: Jason.decode(json)
+    args_json = Jason.encode!(args)
+    code = "return await ((args) => #{func_name}(...args))(#{args_json})"
+
+    Task.async(fn ->
+      with {:ok, json} <- Native.eval_async(rt, code, false), do: Jason.decode(json)
+    end)
   end
 
   # --- Private ---

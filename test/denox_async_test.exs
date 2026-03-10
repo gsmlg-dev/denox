@@ -10,11 +10,11 @@ defmodule DenoxAsyncTest do
 
   describe "eval_async/2 Promises" do
     test "resolves Promise.resolve", %{rt: rt} do
-      assert {:ok, "42"} = Denox.eval_async(rt, "return await Promise.resolve(42)")
+      assert {:ok, "42"} = Task.await(Denox.eval_async(rt, "return await Promise.resolve(42)"))
     end
 
     test "rejects Promise.reject", %{rt: rt} do
-      assert {:error, msg} = Denox.eval_async(rt, ~s[return await Promise.reject("fail")])
+      assert {:error, msg} = Task.await(Denox.eval_async(rt, ~s[return await Promise.reject("fail")]))
       assert msg =~ "fail"
     end
 
@@ -25,7 +25,7 @@ defmodule DenoxAsyncTest do
         .then(x => x + 1)
       """
 
-      assert {:ok, "21"} = Denox.eval_async(rt, code)
+      assert {:ok, "21"} = Task.await(Denox.eval_async(rt, code))
     end
 
     test "async/await", %{rt: rt} do
@@ -36,11 +36,11 @@ defmodule DenoxAsyncTest do
       return await fetchValue();
       """
 
-      assert {:ok, "99"} = Denox.eval_async(rt, code)
+      assert {:ok, "99"} = Task.await(Denox.eval_async(rt, code))
     end
 
     test "returns undefined for void async", %{rt: rt} do
-      assert {:ok, result} = Denox.eval_async(rt, "await Promise.resolve()")
+      assert {:ok, result} = Task.await(Denox.eval_async(rt, "await Promise.resolve()"))
       assert result == "undefined" or result == "null"
     end
   end
@@ -54,7 +54,7 @@ defmodule DenoxAsyncTest do
       return await compute(7);
       """
 
-      assert {:ok, "49"} = Denox.eval_ts_async(rt, code)
+      assert {:ok, "49"} = Task.await(Denox.eval_ts_async(rt, code))
     end
 
     test "TypeScript with typed Promise", %{rt: rt} do
@@ -64,7 +64,7 @@ defmodule DenoxAsyncTest do
       return await p;
       """
 
-      assert {:ok, json} = Denox.eval_ts_async(rt, code)
+      assert {:ok, json} = Task.await(Denox.eval_ts_async(rt, code))
       assert {:ok, %{"value" => 42}} = Jason.decode(json)
     end
   end
@@ -82,7 +82,7 @@ defmodule DenoxAsyncTest do
       return mod.VALUE;
       """
 
-      assert {:ok, "123"} = Denox.eval_async(rt, code)
+      assert {:ok, "123"} = Task.await(Denox.eval_async(rt, code))
     end
   end
 
@@ -94,7 +94,7 @@ defmodule DenoxAsyncTest do
       });
       """
 
-      assert {:ok, "42"} = Denox.eval_async(rt, code)
+      assert {:ok, "42"} = Task.await(Denox.eval_async(rt, code))
     end
   end
 
@@ -106,7 +106,7 @@ defmodule DenoxAsyncTest do
       }
       """)
 
-      assert {:ok, "10"} = Denox.call_async(rt, "asyncDouble", [5])
+      assert {:ok, "10"} = Denox.call_async(rt, "asyncDouble", [5]) |> Task.await()
     end
 
     test "calls async function returning object", %{rt: rt} do
@@ -117,7 +117,7 @@ defmodule DenoxAsyncTest do
       """)
 
       assert {:ok, %{"name" => "Alice", "active" => true}} =
-               Denox.call_async_decode(rt, "fetchUser", ["Alice"])
+               Denox.call_async_decode(rt, "fetchUser", ["Alice"]) |> Task.await()
     end
   end
 end

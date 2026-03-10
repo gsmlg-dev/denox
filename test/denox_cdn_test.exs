@@ -16,7 +16,7 @@ defmodule DenoxCdnTest do
       return schema.parse({ name: "hello" });
       """
 
-      assert {:ok, json} = Denox.eval_async(rt, code)
+      assert {:ok, json} = Task.await(Denox.eval_async(rt, code))
       assert {:ok, %{"name" => "hello"}} = Jason.decode(json)
     end
 
@@ -30,7 +30,7 @@ defmodule DenoxCdnTest do
       return mod.default(2, 3);
       """
 
-      assert {:ok, "5"} = Denox.eval_async(rt, code)
+      assert {:ok, "5"} = Task.await(Denox.eval_async(rt, code))
 
       # Verify cache dir was populated
       assert File.ls!(cache_path) != []
@@ -41,7 +41,7 @@ defmodule DenoxCdnTest do
       return mod.default(10, 20);
       """
 
-      assert {:ok, "30"} = Denox.eval_async(rt, code2)
+      assert {:ok, "30"} = Task.await(Denox.eval_async(rt, code2))
     end
 
     test "disk cache persists across runtimes", %{tmp_dir: dir} do
@@ -55,12 +55,12 @@ defmodule DenoxCdnTest do
       return mod.default(1, 2);
       """
 
-      assert {:ok, "3"} = Denox.eval_async(rt1, code)
+      assert {:ok, "3"} = Task.await(Denox.eval_async(rt1, code))
 
       # Second runtime — should read from disk cache (no network)
       {:ok, rt2} = Denox.runtime(cache_dir: cache_path)
 
-      assert {:ok, "3"} = Denox.eval_async(rt2, code)
+      assert {:ok, "3"} = Task.await(Denox.eval_async(rt2, code))
     end
 
     test "error: invalid URL returns error" do
@@ -70,7 +70,7 @@ defmodule DenoxCdnTest do
       return await import("https://this-domain-definitely-does-not-exist-12345.invalid/mod.js");
       """
 
-      assert {:error, msg} = Denox.eval_async(rt, code)
+      assert {:error, msg} = Task.await(Denox.eval_async(rt, code))
       assert is_binary(msg)
     end
   end

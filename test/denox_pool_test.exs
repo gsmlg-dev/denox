@@ -29,7 +29,7 @@ defmodule DenoxPoolTest do
     end
 
     test "eval_async resolves promises", %{pool: pool} do
-      assert {:ok, "99"} = Denox.Pool.eval_async(pool, "return await Promise.resolve(99)")
+      assert {:ok, "99"} = Task.await(Denox.Pool.eval_async(pool, "return await Promise.resolve(99)"))
     end
 
     test "exec ignores return value", %{pool: pool} do

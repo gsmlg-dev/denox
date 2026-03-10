@@ -22,7 +22,7 @@ defmodule Denox.Deps do
       Denox.eval_async(rt, ~s[
         const { z } = await import("zod");
         return z.string().parse("hello");
-      ])
+      ]) |> Task.await()
   """
 
   @cache_dir "_denox/cache"

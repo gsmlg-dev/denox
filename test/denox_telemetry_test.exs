@@ -96,7 +96,7 @@ defmodule DenoxTelemetryTest do
         nil
       )
 
-      {:ok, "99"} = Denox.eval_async(rt, "return await Promise.resolve(99)")
+      {:ok, "99"} = Task.await(Denox.eval_async(rt, "return await Promise.resolve(99)"))
 
       assert_receive {:type, :eval_async}
 

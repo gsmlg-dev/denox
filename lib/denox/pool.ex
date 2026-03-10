@@ -57,16 +57,16 @@ defmodule Denox.Pool do
     GenServer.call(pool, {:eval_ts, code}, :infinity)
   end
 
-  @doc "Evaluate JavaScript code asynchronously (pumps event loop)."
-  @spec eval_async(pool(), String.t()) :: {:ok, String.t()} | {:error, String.t()}
+  @doc "Evaluate JavaScript code asynchronously, returning a Task."
+  @spec eval_async(pool(), String.t()) :: Task.t()
   def eval_async(pool, code) do
-    GenServer.call(pool, {:eval_async, code}, :infinity)
+    Task.async(fn -> GenServer.call(pool, {:eval_async, code}, :infinity) end)
   end
 
-  @doc "Evaluate TypeScript code asynchronously."
-  @spec eval_ts_async(pool(), String.t()) :: {:ok, String.t()} | {:error, String.t()}
+  @doc "Evaluate TypeScript code asynchronously, returning a Task."
+  @spec eval_ts_async(pool(), String.t()) :: Task.t()
   def eval_ts_async(pool, code) do
-    GenServer.call(pool, {:eval_ts_async, code}, :infinity)
+    Task.async(fn -> GenServer.call(pool, {:eval_ts_async, code}, :infinity) end)
   end
 
   @doc "Execute JavaScript code, ignoring the return value."
@@ -81,10 +81,10 @@ defmodule Denox.Pool do
     GenServer.call(pool, {:call, func_name, args}, :infinity)
   end
 
-  @doc "Call a named async JavaScript function with arguments."
-  @spec call_async(pool(), String.t(), list()) :: {:ok, String.t()} | {:error, String.t()}
+  @doc "Call a named async JavaScript function with arguments, returning a Task."
+  @spec call_async(pool(), String.t(), list()) :: Task.t()
   def call_async(pool, func_name, args \\ []) do
-    GenServer.call(pool, {:call_async, func_name, args}, :infinity)
+    Task.async(fn -> GenServer.call(pool, {:call_async, func_name, args}, :infinity) end)
   end
 
   @doc "Evaluate and decode JSON result."
@@ -150,12 +150,12 @@ defmodule Denox.Pool do
 
   def handle_call({:eval_async, code}, _from, state) do
     {rt, state} = next_runtime(state)
-    {:reply, Denox.eval_async(rt, code), state}
+    {:reply, Denox.Native.eval_async(rt, code, false), state}
   end
 
   def handle_call({:eval_ts_async, code}, _from, state) do
     {rt, state} = next_runtime(state)
-    {:reply, Denox.eval_ts_async(rt, code), state}
+    {:reply, Denox.Native.eval_async(rt, code, true), state}
   end
 
   def handle_call({:exec, code}, _from, state) do
@@ -170,7 +170,9 @@ defmodule Denox.Pool do
 
   def handle_call({:call_async, func_name, args}, _from, state) do
     {rt, state} = next_runtime(state)
-    {:reply, Denox.call_async(rt, func_name, args), state}
+    args_json = Jason.encode!(args)
+    code = "return await ((args) => #{func_name}(...args))(#{args_json})"
+    {:reply, Denox.Native.eval_async(rt, code, false), state}
   end
 
   def handle_call({:eval_decode, code}, _from, state) do

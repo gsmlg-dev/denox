@@ -160,8 +160,8 @@ defmodule DenoxExampleWeb.PlaygroundLive do
       case {language, mode} do
         {"js", "sync"} -> Denox.eval(rt, code)
         {"ts", "sync"} -> Denox.eval_ts(rt, code)
-        {"js", "async"} -> Denox.eval_async(rt, code)
-        {"ts", "async"} -> Denox.eval_ts_async(rt, code)
+        {"js", "async"} -> Denox.eval_async(rt, code) |> Task.await()
+        {"ts", "async"} -> Denox.eval_ts_async(rt, code) |> Task.await()
       end
 
     {status, output} =

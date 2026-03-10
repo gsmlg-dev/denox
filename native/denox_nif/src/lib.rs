@@ -87,43 +87,17 @@ fn transpile_inline(ts_code: &str) -> Result<String, String> {
     Ok(transpiled.into_source().text)
 }
 
-/// Extract a V8 value as a JSON string
-fn extract_value(
-    runtime: &mut JsRuntime,
-    global: deno_core::v8::Global<deno_core::v8::Value>,
-) -> Result<String, String> {
-    let scope = &mut runtime.handle_scope();
-    let local = deno_core::v8::Local::new(scope, global);
-
-    match deno_core::serde_v8::from_v8::<serde_json::Value>(scope, local) {
-        Ok(json_val) => {
-            serde_json::to_string(&json_val).map_err(|e| format!("JSON serialization error: {}", e))
-        }
-        Err(_) => Ok(local.to_rust_string_lossy(scope)),
-    }
-}
-
-/// Process a synchronous V8 eval on the runtime thread
-fn process_eval(runtime: &mut JsRuntime, code: String, transpile: bool) -> Result<String, String> {
-    let js_code = if transpile {
-        transpile_inline(&code)?
-    } else {
-        code
-    };
-
-    let result = runtime
-        .execute_script("<denox>", js_code)
-        .map_err(|e| format!("{}", e))?;
-
-    extract_value(runtime, result)
-}
-
-/// Process an async eval: wraps code in async IIFE, pumps event loop, inspects Promise
-fn process_eval_async(
+/// Process a V8 eval: execute code, pump event loop, resolve Promises.
+///
+/// When `wrap_async` is true, wraps code in `(async () => { ... })()` so that
+/// `await` and `return` work at the top level. When false, code runs as a
+/// plain script — simple expressions like `1 + 2` work without `return`.
+fn process_eval(
     runtime: &mut JsRuntime,
     tokio_rt: &tokio::runtime::Runtime,
     code: String,
     transpile: bool,
+    wrap_async: bool,
     script_name: &'static str,
 ) -> Result<String, String> {
     let js_code = if transpile {
@@ -132,19 +106,22 @@ fn process_eval_async(
         code
     };
 
-    // Wrap in async IIFE so await/import() work
-    let wrapped = format!("(async () => {{ {} }})()", js_code);
+    let js_code = if wrap_async {
+        format!("(async () => {{ {} }})()", js_code)
+    } else {
+        js_code
+    };
 
     let result = runtime
-        .execute_script(script_name, wrapped)
+        .execute_script(script_name, js_code)
         .map_err(|e| format!("{}", e))?;
 
-    // Pump the event loop to settle the promise
+    // Pump the event loop to settle any pending Promises / dynamic imports
     tokio_rt
         .block_on(runtime.run_event_loop(Default::default()))
         .map_err(|e| format!("Event loop error: {}", e))?;
 
-    // Inspect the promise state
+    // Check if result is a Promise and inspect its state
     {
         let scope = &mut runtime.handle_scope();
         let local = deno_core::v8::Local::new(scope, result);
@@ -152,6 +129,7 @@ fn process_eval_async(
         let promise = match deno_core::v8::Local::<deno_core::v8::Promise>::try_from(local) {
             Ok(p) => p,
             Err(_) => {
+                // Not a Promise — extract value directly
                 return match deno_core::serde_v8::from_v8::<serde_json::Value>(scope, local) {
                     Ok(json_val) => serde_json::to_string(&json_val)
                         .map_err(|e| format!("JSON serialization error: {}", e)),
@@ -412,7 +390,9 @@ fn runtime_new(
                     transpile,
                     reply,
                 } => {
-                    let result = process_eval(&mut runtime, code, transpile);
+                    let result = process_eval(
+                        &mut runtime, &tokio_rt, code, transpile, false, "<denox>",
+                    );
                     let _ = reply.send(result);
                 }
                 Command::EvalAsync {
@@ -420,8 +400,9 @@ fn runtime_new(
                     transpile,
                     reply,
                 } => {
-                    let result =
-                        process_eval_async(&mut runtime, &tokio_rt, code, transpile, script_name);
+                    let result = process_eval(
+                        &mut runtime, &tokio_rt, code, transpile, true, script_name,
+                    );
                     let _ = reply.send(result);
                 }
                 Command::EvalModule { path, reply } => {
