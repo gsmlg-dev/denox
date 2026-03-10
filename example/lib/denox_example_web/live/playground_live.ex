@@ -156,14 +156,39 @@ defmodule DenoxExampleWeb.PlaygroundLive do
 
     %{code: code, language: language, mode: mode} = socket.assigns
 
-    result =
-      case {language, mode} do
-        {"js", "sync"} -> Denox.eval(rt, code)
-        {"ts", "sync"} -> Denox.eval_ts(rt, code)
-        {"js", "async"} -> Denox.eval_async(rt, code) |> Denox.await(:infinity)
-        {"ts", "async"} -> Denox.eval_ts_async(rt, code) |> Denox.await(:infinity)
-      end
+    lv = self()
 
+    Task.start(fn ->
+      result =
+        case {language, mode} do
+          {"js", "sync"} -> Denox.eval(rt, code)
+          {"ts", "sync"} -> Denox.eval_ts(rt, code)
+          {"js", "async"} -> Denox.eval_async(rt, code) |> Denox.await(:infinity)
+          {"ts", "async"} -> Denox.eval_ts_async(rt, code) |> Denox.await(:infinity)
+        end
+
+      send(lv, {:eval_result, code, language, mode, result})
+    end)
+
+    {:noreply, assign(socket, running: true)}
+  end
+
+  def handle_event("load_example", %{"name" => name}, socket) do
+    case Map.get(@examples, name) do
+      {code, language, mode} ->
+        {:noreply, assign(socket, code: code, language: language, mode: mode, active_example: name)}
+
+      nil ->
+        {:noreply, socket}
+    end
+  end
+
+  def handle_event("clear_history", _params, socket) do
+    {:noreply, assign(socket, :history, [])}
+  end
+
+  @impl true
+  def handle_info({:eval_result, code, language, mode, result}, socket) do
     {status, output} =
       case result do
         {:ok, value} -> {:ok, value}
@@ -185,22 +210,9 @@ defmodule DenoxExampleWeb.PlaygroundLive do
      assign(socket,
        result: output,
        result_status: status,
-       history: history
+       history: history,
+       running: false
      )}
-  end
-
-  def handle_event("load_example", %{"name" => name}, socket) do
-    case Map.get(@examples, name) do
-      {code, language, mode} ->
-        {:noreply, assign(socket, code: code, language: language, mode: mode, active_example: name)}
-
-      nil ->
-        {:noreply, socket}
-    end
-  end
-
-  def handle_event("clear_history", _params, socket) do
-    {:noreply, assign(socket, :history, [])}
   end
 
   @impl true
@@ -286,8 +298,8 @@ defmodule DenoxExampleWeb.PlaygroundLive do
           <div class="flex-1" />
 
           <%!-- Run Button --%>
-          <.dm_btn variant="primary" phx-click="run">
-            Run
+          <.dm_btn variant="primary" phx-click="run" disabled={@running}>
+            {if @running, do: "Running...", else: "Run"}
           </.dm_btn>
         </div>
       </div>
