@@ -57,7 +57,7 @@ in
   # Scripts for common tasks
   scripts = {
     hello.exec = ''
-      figlet -w 120 $GREET | lolcat
+      figlet -w 120 "''${GREET:-Denox}" | lolcat
     '';
 
       # Testing (MIX_ENV must be overridden since devenv sets it to "dev")
