@@ -1,7 +1,7 @@
 defmodule Denox.MixProject do
   use Mix.Project
 
-  @version "0.3.2"
+  @version "0.4.0"
   @source_url "https://github.com/gsmlg-dev/denox"
 
   def project do
@@ -55,6 +55,7 @@ defmodule Denox.MixProject do
       groups_for_modules: [
         Core: [Denox, Denox.CallbackHandler],
         Pool: [Denox.Pool],
+        Runner: [Denox.Run],
         Dependencies: [Denox.Deps, Denox.Npm],
         Internal: [Denox.Native]
       ]

@@ -1,12 +1,16 @@
 # Changelog
 
-## v0.3.1 (unreleased)
+## v0.4.0
 
 ### Features
 
+- **`Denox.Run` subprocess runner** — GenServer wrapping `deno run` with bidirectional stdio, enabling Elixir apps to run full Deno programs (MCP servers, CLI tools) with OTP supervision
+- **`mix denox.run` task** — drop-in replacement for `deno run` with stdin forwarding, e.g. `mix denox.run -A @modelcontextprotocol/server-github`
+- **Deno permission mapping** — `:all` for `-A`, or granular keyword list (`allow_net`, `allow_env`, etc.)
+- **Auto npm: prefix** — bare `@scope/name` specifiers are automatically prefixed with `npm:`
+- **Pub/sub stdout** — `Denox.Run.subscribe/1` for receiving `{:denox_run_stdout, pid, line}` messages
 - **Real `setTimeout`** — native `op_sleep` async op for millisecond-accurate delays in `setTimeout`/`setInterval`
 - **Convenience functions** — added `eval_async_decode`, `eval_ts_async_decode`, `eval_file_async`, `eval_file_decode`, `eval_file_async_decode` for cleaner API
-- **Non-blocking LiveView** — example app uses `Task.start` + `handle_info` for async eval to avoid blocking LiveView during long operations
 
 ### Fixes
 
