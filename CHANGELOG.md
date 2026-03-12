@@ -1,4 +1,9 @@
-# Changelog
+## v0.4.0
+
+### Changes
+
+- fix: fix hello script and clean up .envrc
+
 
 ## v0.4.0
 
