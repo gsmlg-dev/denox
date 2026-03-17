@@ -325,7 +325,8 @@ defmodule Denox do
       case File.read(path) do
         {:ok, code} -> Native.eval_async(rt, code, transpile)
         {:error, reason} -> {:error, "Failed to read #{path}: #{reason}"}
-      end |> await(:infinity)
+      end
+      |> await(:infinity)
     end)
   end
 
@@ -347,7 +348,8 @@ defmodule Denox do
   @spec eval_file_async_decode(runtime(), String.t(), keyword()) :: Task.t()
   def eval_file_async_decode(rt, path, opts \\ []) do
     Task.async(fn ->
-      with {:ok, json} <- eval_file_async(rt, path, opts) |> await(:infinity), do: Denox.JSON.decode(json)
+      with {:ok, json} <- eval_file_async(rt, path, opts) |> await(:infinity),
+           do: Denox.JSON.decode(json)
     end)
   end
 

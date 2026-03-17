@@ -23,10 +23,12 @@ defmodule Denox.ImportMapTest do
         )
 
       {:ok, result} =
-        Task.await(Denox.eval_async(rt, """
-        const mod = await import("math");
-        return mod.PI;
-        """))
+        Task.await(
+          Denox.eval_async(rt, """
+          const mod = await import("math");
+          return mod.PI;
+          """)
+        )
 
       assert result == "3.14159"
     end
@@ -51,11 +53,13 @@ defmodule Denox.ImportMapTest do
         )
 
       {:ok, result} =
-        Task.await(Denox.eval_async(rt, """
-        const { FOO } = await import("foo");
-        const { BAR } = await import("bar");
-        return FOO + BAR;
-        """))
+        Task.await(
+          Denox.eval_async(rt, """
+          const { FOO } = await import("foo");
+          const { BAR } = await import("bar");
+          return FOO + BAR;
+          """)
+        )
 
       assert result == "\"foobar\""
     end
@@ -86,11 +90,13 @@ defmodule Denox.ImportMapTest do
         )
 
       {:ok, result} =
-        Task.await(Denox.eval_async(rt, """
-        const { add } = await import("mylib/add.ts");
-        const { mul } = await import("mylib/mul.ts");
-        return add(2, 3) * mul(4, 5);
-        """))
+        Task.await(
+          Denox.eval_async(rt, """
+          const { add } = await import("mylib/add.ts");
+          const { mul } = await import("mylib/mul.ts");
+          return add(2, 3) * mul(4, 5);
+          """)
+        )
 
       # add(2,3)=5, mul(4,5)=20, 5*20=100
       assert result == "100"
@@ -167,10 +173,12 @@ defmodule Denox.ImportMapTest do
         )
 
       {:ok, result} =
-        Task.await(Denox.Pool.eval_async(pool, """
-        const mod = await import("value");
-        return mod.VALUE;
-        """))
+        Task.await(
+          Denox.Pool.eval_async(pool, """
+          const mod = await import("value");
+          return mod.VALUE;
+          """)
+        )
 
       assert result == "99"
     end

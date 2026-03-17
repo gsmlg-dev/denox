@@ -93,7 +93,9 @@ defmodule Denox.CallbackTest do
           }
         )
 
-      {:ok, result} = Task.await(Denox.eval_async(rt, ~s[return Denox.callback("multiply", 6, 7)]))
+      {:ok, result} =
+        Task.await(Denox.eval_async(rt, ~s[return Denox.callback("multiply", 6, 7)]))
+
       assert result == "42"
     end
   end

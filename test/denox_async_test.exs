@@ -14,7 +14,9 @@ defmodule DenoxAsyncTest do
     end
 
     test "rejects Promise.reject", %{rt: rt} do
-      assert {:error, msg} = Task.await(Denox.eval_async(rt, ~s[return await Promise.reject("fail")]))
+      assert {:error, msg} =
+               Task.await(Denox.eval_async(rt, ~s[return await Promise.reject("fail")]))
+
       assert msg =~ "fail"
     end
 
