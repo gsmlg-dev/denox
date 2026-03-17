@@ -95,23 +95,27 @@ defmodule Denox.Npm do
   Returns `:ok` or `{:error, message}`.
   """
   def bundle_file(entrypoint, output_path, opts \\ []) do
-    with :ok <- check_deno() do
-      unless File.exists?(entrypoint) do
-        {:error, "Entrypoint #{entrypoint} not found"}
-      else
-        File.mkdir_p!(Path.dirname(output_path))
+    with :ok <- check_deno(),
+         :ok <- check_entrypoint(entrypoint) do
+      File.mkdir_p!(Path.dirname(output_path))
+      args = build_bundle_args(entrypoint, output_path, opts)
 
-        args = build_bundle_args(entrypoint, output_path, opts)
-
-        case System.cmd("deno", args, stderr_to_stdout: true) do
-          {_, 0} -> :ok
-          {output, _} -> {:error, "deno bundle failed: #{output}"}
-        end
+      case System.cmd("deno", args, stderr_to_stdout: true) do
+        {_, 0} -> :ok
+        {output, _} -> {:error, "deno bundle failed: #{output}"}
       end
     end
   end
 
   # --- Private ---
+
+  defp check_entrypoint(entrypoint) do
+    if File.exists?(entrypoint) do
+      :ok
+    else
+      {:error, "Entrypoint #{entrypoint} not found"}
+    end
+  end
 
   defp check_deno do
     case System.find_executable("deno") do

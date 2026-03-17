@@ -44,9 +44,8 @@ defmodule Denox.Deps do
 
     with :ok <- check_deno(),
          :ok <- check_config(config),
-         :ok <- ensure_vendor_config(config),
-         :ok <- run_deno_install(config) do
-      :ok
+         :ok <- ensure_vendor_config(config) do
+      run_deno_install(config)
     end
   end
 
@@ -125,23 +124,9 @@ defmodule Denox.Deps do
   def list(opts \\ []) do
     config = Keyword.get(opts, :config, @deno_json)
 
-    with :ok <- check_config(config) do
-      case File.read(config) do
-        {:ok, content} ->
-          case Denox.JSON.decode(content) do
-            {:ok, %{"imports" => imports}} when is_map(imports) ->
-              {:ok, imports}
-
-            {:ok, _} ->
-              {:ok, %{}}
-
-            {:error, _} ->
-              {:error, "Failed to parse #{config}"}
-          end
-
-        {:error, reason} ->
-          {:error, "Failed to read #{config}: #{reason}"}
-      end
+    with :ok <- check_config(config),
+         {:ok, content} <- File.read(config) |> wrap_file_error(config) do
+      parse_imports(content, config)
     end
   end
 
@@ -182,6 +167,19 @@ defmodule Denox.Deps do
   end
 
   # --- Private helpers ---
+
+  defp wrap_file_error({:ok, content}, _config), do: {:ok, content}
+
+  defp wrap_file_error({:error, reason}, config),
+    do: {:error, "Failed to read #{config}: #{reason}"}
+
+  defp parse_imports(content, config) do
+    case Denox.JSON.decode(content) do
+      {:ok, %{"imports" => imports}} when is_map(imports) -> {:ok, imports}
+      {:ok, _} -> {:ok, %{}}
+      {:error, _} -> {:error, "Failed to parse #{config}"}
+    end
+  end
 
   defp check_deno do
     case System.find_executable("deno") do
