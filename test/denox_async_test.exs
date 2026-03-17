@@ -86,6 +86,39 @@ defmodule DenoxAsyncTest do
     end
   end
 
+  describe "eval_async/2 error handling" do
+    test "returns error for ReferenceError during event-loop drain", %{rt: rt} do
+      code = """
+      await (async () => { throw new ReferenceError("Blob is not defined"); })();
+      """
+
+      assert {:error, msg} = Task.await(Denox.eval_async(rt, code))
+      assert is_binary(msg)
+    end
+
+    test "returns error for TypeError in async code", %{rt: rt} do
+      code = """
+      const obj = undefined;
+      return await Promise.resolve(obj.property);
+      """
+
+      assert {:error, msg} = Task.await(Denox.eval_async(rt, code))
+      assert is_binary(msg)
+    end
+
+    test "runtime remains usable after async error", %{rt: rt} do
+      # Trigger an error
+      code = """
+      await (async () => { throw new Error("temporary failure"); })();
+      """
+
+      assert {:error, _} = Task.await(Denox.eval_async(rt, code))
+
+      # Runtime should still work
+      assert {:ok, "42"} = Task.await(Denox.eval_async(rt, "return 42"))
+    end
+  end
+
   describe "eval_async/2 microtasks" do
     test "queueMicrotask resolves via event loop", %{rt: rt} do
       code = """
