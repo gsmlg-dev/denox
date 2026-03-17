@@ -1,0 +1,23 @@
+{
+  "skill_name": "denox",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "I need to run the GitHub MCP server from my Elixir app so I can call GitHub tools via JSON-RPC. How do I set that up with Denox?",
+      "expected_output": "Should show Denox.Run.start_link with @modelcontextprotocol/server-github, permissions: :all, env for GITHUB_PERSONAL_ACCESS_TOKEN, and send/recv for JSON-RPC communication",
+      "files": []
+    },
+    {
+      "id": 2,
+      "prompt": "I want to validate user input in my Phoenix app using Zod schemas defined in TypeScript. What's the best way to do that with Denox?",
+      "expected_output": "Should show creating a runtime with cache_dir, using eval_async to import Zod from CDN or bundled, defining a schema, and using eval_decode or call_decode to get Elixir terms back. Should mention Denox.Pool for concurrent Phoenix requests.",
+      "files": []
+    },
+    {
+      "id": 3,
+      "prompt": "I have a TypeScript module that exports helper functions. I want to call them from Elixir with proper error handling. How do I load the module and call its functions?",
+      "expected_output": "Should show Denox.runtime with base_dir, eval_module to load the .ts file, then call/call_decode to invoke exported functions. Should mention that eval_module makes exports available and that TypeScript is transpile-only.",
+      "files": []
+    }
+  ]
+}
