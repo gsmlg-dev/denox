@@ -5,6 +5,9 @@ on:
   push:
     branches: [ '*' ]
 
+env:
+  DENOX_BUILD: "true"
+
 jobs:
   compile:
 
@@ -20,6 +23,20 @@ jobs:
         with:
           elixir-version: '1.18'
           otp-version: '28'
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust dependencies and V8 build
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            native/denox_nif/target
+          key: rust-${{ runner.os }}-${{ hashFiles('native/denox_nif/Cargo.lock') }}
+          restore-keys: |
+            rust-${{ runner.os }}-
 
       - name: Restore dependencies cache
         uses: actions/cache@v4
@@ -79,6 +96,20 @@ jobs:
           elixir-version: '1.18'
           otp-version: '28'
 
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust dependencies and V8 build
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            native/denox_nif/target
+          key: rust-${{ runner.os }}-${{ hashFiles('native/denox_nif/Cargo.lock') }}
+          restore-keys: |
+            rust-${{ runner.os }}-
+
       - name: Restore dependencies cache
         uses: actions/cache@v4
         with:
@@ -107,6 +138,20 @@ jobs:
         with:
           elixir-version: '1.18'
           otp-version: '28'
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust dependencies and V8 build
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            native/denox_nif/target
+          key: rust-${{ runner.os }}-${{ hashFiles('native/denox_nif/Cargo.lock') }}
+          restore-keys: |
+            rust-${{ runner.os }}-
 
       - name: Restore dependencies cache
         uses: actions/cache@v4
