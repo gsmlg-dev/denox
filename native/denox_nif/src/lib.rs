@@ -390,9 +390,15 @@ fn runtime_new(
                     transpile,
                     reply,
                 } => {
-                    let result = process_eval(
-                        &mut runtime, &tokio_rt, code, transpile, false, "<denox>",
-                    );
+                    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                        process_eval(
+                            &mut runtime, &tokio_rt, code, transpile, false, "<denox>",
+                        )
+                    }))
+                    .unwrap_or_else(|panic_val| {
+                        let msg = panic_message(&panic_val);
+                        Err(format!("V8 runtime panicked: {}", msg))
+                    });
                     let _ = reply.send(result);
                 }
                 Command::EvalAsync {
@@ -400,13 +406,25 @@ fn runtime_new(
                     transpile,
                     reply,
                 } => {
-                    let result = process_eval(
-                        &mut runtime, &tokio_rt, code, transpile, true, script_name,
-                    );
+                    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                        process_eval(
+                            &mut runtime, &tokio_rt, code, transpile, true, script_name,
+                        )
+                    }))
+                    .unwrap_or_else(|panic_val| {
+                        let msg = panic_message(&panic_val);
+                        Err(format!("V8 runtime panicked: {}", msg))
+                    });
                     let _ = reply.send(result);
                 }
                 Command::EvalModule { path, reply } => {
-                    let result = process_eval_module(&mut runtime, &tokio_rt, path);
+                    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                        process_eval_module(&mut runtime, &tokio_rt, path)
+                    }))
+                    .unwrap_or_else(|panic_val| {
+                        let msg = panic_message(&panic_val);
+                        Err(format!("V8 runtime panicked: {}", msg))
+                    });
                     let _ = reply.send(result);
                 }
             }
@@ -601,6 +619,17 @@ fn callback_error(
 
     tx.send(Err(error_msg))
         .map_err(|_| "Failed to send callback error".to_string())
+}
+
+/// Extract a human-readable message from a panic payload.
+fn panic_message(panic_val: &Box<dyn std::any::Any + Send>) -> String {
+    if let Some(s) = panic_val.downcast_ref::<&str>() {
+        s.to_string()
+    } else if let Some(s) = panic_val.downcast_ref::<String>() {
+        s.clone()
+    } else {
+        "unknown panic".to_string()
+    }
 }
 
 rustler::init!("Elixir.Denox.Native", load = on_load);
