@@ -13,7 +13,10 @@ defmodule Denox.MixProject do
       deps: deps(),
       description: description(),
       package: package(),
-      docs: docs()
+      docs: docs(),
+      dialyzer: [
+        plt_add_apps: [:mix]
+      ]
     ]
   end
 
