@@ -1,4 +1,5 @@
 mod callback_op;
+mod globals_op;
 mod timer_op;
 mod ts_loader;
 
@@ -287,6 +288,10 @@ fn runtime_new(
             opts.extensions
                 .push(timer_op::denox_timer_ext::init_ops());
 
+            // Register globals extension (performance.now, crypto.getRandomValues)
+            opts.extensions
+                .push(globals_op::denox_globals_ext::init_ops());
+
             // Register the callback extension if callbacks are enabled
             if has_callbacks {
                 opts.extensions
@@ -353,6 +358,402 @@ fn runtime_new(
                         delete _timers[id];
                     }
                 };
+            })();
+            "#,
+        );
+
+        // Polyfill standard globals available in Node.js and Deno
+        let _ = runtime.execute_script(
+            "<denox_globals_polyfill>",
+            r#"
+            (function() {
+                // ---- console ----
+                if (typeof globalThis.console === "undefined") {
+                    var _timers = {};
+                    var _counts = {};
+                    var noop = function() {};
+                    globalThis.console = {
+                        log: noop,
+                        info: noop,
+                        warn: noop,
+                        error: noop,
+                        debug: noop,
+                        trace: noop,
+                        dir: noop,
+                        dirxml: noop,
+                        table: noop,
+                        clear: noop,
+                        group: noop,
+                        groupCollapsed: noop,
+                        groupEnd: noop,
+                        assert: noop,
+                        count: function(label) {
+                            label = label || "default";
+                            _counts[label] = (_counts[label] || 0) + 1;
+                        },
+                        countReset: function(label) {
+                            label = label || "default";
+                            _counts[label] = 0;
+                        },
+                        time: function(label) {
+                            label = label || "default";
+                            _timers[label] = Date.now();
+                        },
+                        timeEnd: function(label) {
+                            label = label || "default";
+                            delete _timers[label];
+                        },
+                        timeLog: function() {}
+                    };
+                }
+
+                // ---- atob / btoa ----
+                if (typeof globalThis.atob === "undefined") {
+                    var chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+                    globalThis.btoa = function(input) {
+                        var str = String(input);
+                        var len = str.length;
+                        var output = "";
+                        for (var i = 0; i < len; i += 3) {
+                            var a = str.charCodeAt(i);
+                            var b = i + 1 < len ? str.charCodeAt(i + 1) : 0;
+                            var c = i + 2 < len ? str.charCodeAt(i + 2) : 0;
+                            var triple = (a << 16) | (b << 8) | c;
+                            output += chars[(triple >> 18) & 63];
+                            output += chars[(triple >> 12) & 63];
+                            output += i + 1 < len ? chars[(triple >> 6) & 63] : "=";
+                            output += i + 2 < len ? chars[triple & 63] : "=";
+                        }
+                        return output;
+                    };
+                    globalThis.atob = function(input) {
+                        var str = String(input).replace(/[\s=]+$/g, "");
+                        if (str.length === 0) return "";
+                        var output = "";
+                        var len = str.length;
+                        for (var i = 0; i < len; i += 4) {
+                            var a = chars.indexOf(str.charAt(i));
+                            var b = i + 1 < len ? chars.indexOf(str.charAt(i + 1)) : 0;
+                            var c = i + 2 < len ? chars.indexOf(str.charAt(i + 2)) : -1;
+                            var d = i + 3 < len ? chars.indexOf(str.charAt(i + 3)) : -1;
+                            var triple = (a << 18) | (b << 12) | ((c >= 0 ? c : 0) << 6) | (d >= 0 ? d : 0);
+                            output += String.fromCharCode((triple >> 16) & 255);
+                            if (c >= 0) output += String.fromCharCode((triple >> 8) & 255);
+                            if (d >= 0) output += String.fromCharCode(triple & 255);
+                        }
+                        return output;
+                    };
+                }
+
+                // ---- performance ----
+                if (typeof globalThis.performance === "undefined") {
+                    globalThis.performance = {
+                        now: function() {
+                            return Deno.core.ops.op_hrtime_now();
+                        },
+                        timeOrigin: Date.now()
+                    };
+                }
+
+                // ---- navigator ----
+                if (typeof globalThis.navigator === "undefined") {
+                    globalThis.navigator = {
+                        userAgent: "Denox",
+                        language: "en",
+                        languages: ["en"],
+                        hardwareConcurrency: 1
+                    };
+                }
+
+                // ---- structuredClone ----
+                if (typeof globalThis.structuredClone === "undefined") {
+                    globalThis.structuredClone = function(value) {
+                        return JSON.parse(JSON.stringify(value));
+                    };
+                }
+
+                // ---- queueMicrotask ----
+                if (typeof globalThis.queueMicrotask === "undefined") {
+                    globalThis.queueMicrotask = function(callback) {
+                        Promise.resolve().then(callback);
+                    };
+                }
+
+                // ---- crypto ----
+                if (typeof globalThis.crypto === "undefined") {
+                    globalThis.crypto = {};
+                }
+                if (typeof globalThis.crypto.getRandomValues === "undefined") {
+                    globalThis.crypto.getRandomValues = function(typedArray) {
+                        var buf = new Uint8Array(typedArray.buffer, typedArray.byteOffset, typedArray.byteLength);
+                        Deno.core.ops.op_crypto_random(buf);
+                        return typedArray;
+                    };
+                }
+                if (typeof globalThis.crypto.randomUUID === "undefined") {
+                    globalThis.crypto.randomUUID = function() {
+                        var bytes = new Uint8Array(16);
+                        crypto.getRandomValues(bytes);
+                        bytes[6] = (bytes[6] & 0x0f) | 0x40;
+                        bytes[8] = (bytes[8] & 0x3f) | 0x80;
+                        var hex = Array.prototype.map.call(bytes, function(b) {
+                            return ("0" + b.toString(16)).slice(-2);
+                        }).join("");
+                        return hex.slice(0,8) + "-" + hex.slice(8,12) + "-" + hex.slice(12,16) + "-" + hex.slice(16,20) + "-" + hex.slice(20);
+                    };
+                }
+
+                // ---- EventTarget / Event ----
+                if (typeof globalThis.Event === "undefined") {
+                    globalThis.Event = function Event(type, opts) {
+                        this.type = type;
+                        this.bubbles = !!(opts && opts.bubbles);
+                        this.cancelable = !!(opts && opts.cancelable);
+                        this.defaultPrevented = false;
+                        this.timeStamp = performance.now();
+                    };
+                    Event.prototype.preventDefault = function() { this.defaultPrevented = true; };
+                    Event.prototype.stopPropagation = function() {};
+                    Event.prototype.stopImmediatePropagation = function() {};
+                }
+                if (typeof globalThis.EventTarget === "undefined") {
+                    globalThis.EventTarget = function EventTarget() {
+                        this._listeners = {};
+                    };
+                    EventTarget.prototype.addEventListener = function(type, listener) {
+                        if (!this._listeners[type]) this._listeners[type] = [];
+                        this._listeners[type].push(listener);
+                    };
+                    EventTarget.prototype.removeEventListener = function(type, listener) {
+                        var list = this._listeners[type];
+                        if (list) {
+                            this._listeners[type] = list.filter(function(l) { return l !== listener; });
+                        }
+                    };
+                    EventTarget.prototype.dispatchEvent = function(event) {
+                        var list = this._listeners[event.type];
+                        if (list) {
+                            list.forEach(function(l) { l.call(this, event); }.bind(this));
+                        }
+                        return !event.defaultPrevented;
+                    };
+                }
+
+                // ---- AbortController / AbortSignal ----
+                if (typeof globalThis.AbortController === "undefined") {
+                    function AbortSignal() {
+                        EventTarget.call(this);
+                        this.aborted = false;
+                        this.reason = undefined;
+                    }
+                    AbortSignal.prototype = Object.create(EventTarget.prototype);
+                    AbortSignal.prototype.constructor = AbortSignal;
+                    AbortSignal.prototype.throwIfAborted = function() {
+                        if (this.aborted) throw this.reason;
+                    };
+                    AbortSignal.abort = function(reason) {
+                        var signal = new AbortSignal();
+                        signal.aborted = true;
+                        signal.reason = reason !== undefined ? reason : new DOMException("The operation was aborted.", "AbortError");
+                        return signal;
+                    };
+                    AbortSignal.timeout = function(ms) {
+                        var signal = new AbortSignal();
+                        setTimeout(function() {
+                            signal.aborted = true;
+                            signal.reason = new DOMException("The operation timed out.", "TimeoutError");
+                            signal.dispatchEvent(new Event("abort"));
+                        }, ms);
+                        return signal;
+                    };
+                    globalThis.AbortSignal = AbortSignal;
+
+                    globalThis.AbortController = function AbortController() {
+                        this.signal = new AbortSignal();
+                    };
+                    AbortController.prototype.abort = function(reason) {
+                        if (!this.signal.aborted) {
+                            this.signal.aborted = true;
+                            this.signal.reason = reason !== undefined ? reason : new DOMException("The operation was aborted.", "AbortError");
+                            this.signal.dispatchEvent(new Event("abort"));
+                        }
+                    };
+                }
+
+                // ---- DOMException ----
+                if (typeof globalThis.DOMException === "undefined") {
+                    globalThis.DOMException = function DOMException(message, name) {
+                        this.message = message || "";
+                        this.name = name || "Error";
+                    };
+                    DOMException.prototype = Object.create(Error.prototype);
+                    DOMException.prototype.constructor = DOMException;
+                }
+
+                // ---- TextEncoder / TextDecoder (UTF-8) ----
+                if (typeof globalThis.TextEncoder === "undefined") {
+                    globalThis.TextEncoder = function TextEncoder() {
+                        this.encoding = "utf-8";
+                    };
+                    TextEncoder.prototype.encode = function(str) {
+                        str = String(str);
+                        var bytes = [];
+                        for (var i = 0; i < str.length; i++) {
+                            var code = str.charCodeAt(i);
+                            if (code < 0x80) {
+                                bytes.push(code);
+                            } else if (code < 0x800) {
+                                bytes.push(0xc0 | (code >> 6), 0x80 | (code & 0x3f));
+                            } else if (code >= 0xd800 && code < 0xdc00 && i + 1 < str.length) {
+                                var next = str.charCodeAt(i + 1);
+                                if (next >= 0xdc00 && next < 0xe000) {
+                                    var cp = ((code - 0xd800) << 10) + (next - 0xdc00) + 0x10000;
+                                    bytes.push(0xf0 | (cp >> 18), 0x80 | ((cp >> 12) & 0x3f), 0x80 | ((cp >> 6) & 0x3f), 0x80 | (cp & 0x3f));
+                                    i++;
+                                } else {
+                                    bytes.push(0xef, 0xbf, 0xbd);
+                                }
+                            } else if (code >= 0xd800 && code < 0xe000) {
+                                bytes.push(0xef, 0xbf, 0xbd);
+                            } else {
+                                bytes.push(0xe0 | (code >> 12), 0x80 | ((code >> 6) & 0x3f), 0x80 | (code & 0x3f));
+                            }
+                        }
+                        return new Uint8Array(bytes);
+                    };
+                    TextEncoder.prototype.encodeInto = function(str, dest) {
+                        var encoded = this.encode(str);
+                        var len = Math.min(encoded.length, dest.length);
+                        dest.set(encoded.subarray(0, len));
+                        return { read: str.length, written: len };
+                    };
+                }
+                if (typeof globalThis.TextDecoder === "undefined") {
+                    globalThis.TextDecoder = function TextDecoder(encoding) {
+                        this.encoding = encoding || "utf-8";
+                    };
+                    TextDecoder.prototype.decode = function(input) {
+                        if (!input || input.byteLength === 0) return "";
+                        var bytes = new Uint8Array(input.buffer || input, input.byteOffset || 0, input.byteLength || input.length);
+                        var result = "";
+                        for (var i = 0; i < bytes.length; ) {
+                            var b = bytes[i];
+                            if (b < 0x80) {
+                                result += String.fromCharCode(b);
+                                i++;
+                            } else if ((b & 0xe0) === 0xc0) {
+                                result += String.fromCharCode(((b & 0x1f) << 6) | (bytes[i+1] & 0x3f));
+                                i += 2;
+                            } else if ((b & 0xf0) === 0xe0) {
+                                result += String.fromCharCode(((b & 0x0f) << 12) | ((bytes[i+1] & 0x3f) << 6) | (bytes[i+2] & 0x3f));
+                                i += 3;
+                            } else if ((b & 0xf8) === 0xf0) {
+                                var cp = ((b & 0x07) << 18) | ((bytes[i+1] & 0x3f) << 12) | ((bytes[i+2] & 0x3f) << 6) | (bytes[i+3] & 0x3f);
+                                cp -= 0x10000;
+                                result += String.fromCharCode(0xd800 + (cp >> 10), 0xdc00 + (cp & 0x3ff));
+                                i += 4;
+                            } else {
+                                result += "\ufffd";
+                                i++;
+                            }
+                        }
+                        return result;
+                    };
+                }
+
+                // ---- URLSearchParams ----
+                if (typeof globalThis.URLSearchParams === "undefined") {
+                    globalThis.URLSearchParams = function URLSearchParams(init) {
+                        this._entries = [];
+                        if (typeof init === "string") {
+                            var s = init.charAt(0) === "?" ? init.slice(1) : init;
+                            if (s.length > 0) {
+                                var pairs = s.split("&");
+                                for (var i = 0; i < pairs.length; i++) {
+                                    var idx = pairs[i].indexOf("=");
+                                    var key = idx >= 0 ? pairs[i].slice(0, idx) : pairs[i];
+                                    var val = idx >= 0 ? pairs[i].slice(idx + 1) : "";
+                                    this._entries.push([decodeURIComponent(key.replace(/\+/g, " ")), decodeURIComponent(val.replace(/\+/g, " "))]);
+                                }
+                            }
+                        } else if (init && typeof init === "object") {
+                            if (Array.isArray(init)) {
+                                for (var j = 0; j < init.length; j++) this._entries.push([String(init[j][0]), String(init[j][1])]);
+                            } else {
+                                var keys = Object.keys(init);
+                                for (var k = 0; k < keys.length; k++) this._entries.push([keys[k], String(init[keys[k]])]);
+                            }
+                        }
+                    };
+                    var usp = URLSearchParams.prototype;
+                    usp.get = function(name) {
+                        for (var i = 0; i < this._entries.length; i++) {
+                            if (this._entries[i][0] === name) return this._entries[i][1];
+                        }
+                        return null;
+                    };
+                    usp.getAll = function(name) {
+                        return this._entries.filter(function(e) { return e[0] === name; }).map(function(e) { return e[1]; });
+                    };
+                    usp.has = function(name) { return this.get(name) !== null; };
+                    usp.set = function(name, value) {
+                        var found = false;
+                        this._entries = this._entries.filter(function(e) {
+                            if (e[0] === name) { if (!found) { e[1] = String(value); found = true; return true; } return false; }
+                            return true;
+                        });
+                        if (!found) this._entries.push([name, String(value)]);
+                    };
+                    usp.append = function(name, value) { this._entries.push([String(name), String(value)]); };
+                    usp.delete = function(name) { this._entries = this._entries.filter(function(e) { return e[0] !== name; }); };
+                    usp.toString = function() {
+                        return this._entries.map(function(e) { return encodeURIComponent(e[0]) + "=" + encodeURIComponent(e[1]); }).join("&");
+                    };
+                    usp.forEach = function(cb, thisArg) {
+                        for (var i = 0; i < this._entries.length; i++) cb.call(thisArg, this._entries[i][1], this._entries[i][0], this);
+                    };
+                    usp.keys = function() { return this._entries.map(function(e) { return e[0]; })[Symbol.iterator](); };
+                    usp.values = function() { return this._entries.map(function(e) { return e[1]; })[Symbol.iterator](); };
+                    usp.entries = function() { return this._entries[Symbol.iterator](); };
+                    usp[Symbol.iterator] = function() { return this.entries(); };
+                }
+
+                // ---- URL ----
+                if (typeof globalThis.URL === "undefined") {
+                    globalThis.URL = function URL(url, base) {
+                        var href = base ? new URL(base).href : "";
+                        if (base) {
+                            // Resolve relative URL against base
+                            if (url.match(/^[a-zA-Z][a-zA-Z0-9+\-.]*:/)) {
+                                href = url;
+                            } else if (url.charAt(0) === "/") {
+                                var m = href.match(/^([a-zA-Z][a-zA-Z0-9+\-.]*:\/\/[^/?#]*)/);
+                                href = m ? m[1] + url : url;
+                            } else {
+                                href = href.replace(/[?#].*$/, "").replace(/\/[^/]*$/, "/") + url;
+                            }
+                        } else {
+                            href = url;
+                        }
+                        // Parse the URL
+                        var match = href.match(/^([a-zA-Z][a-zA-Z0-9+\-.]*):\/\/(?:([^:@]*)(?::([^@]*))?@)?([^:/?#]*)(?::(\d+))?(\/[^?#]*)?(\?[^#]*)?(#.*)?$/);
+                        if (!match) throw new TypeError("Invalid URL: " + url);
+                        this.protocol = match[1] + ":";
+                        this.username = match[2] || "";
+                        this.password = match[3] || "";
+                        this.hostname = match[4] || "";
+                        this.port = match[5] || "";
+                        this.pathname = match[6] || "/";
+                        this.search = match[7] || "";
+                        this.hash = match[8] || "";
+                        this.host = this.hostname + (this.port ? ":" + this.port : "");
+                        this.origin = this.protocol + "//" + this.host;
+                        this.href = this.origin + this.pathname + this.search + this.hash;
+                        this.searchParams = new URLSearchParams(this.search);
+                    };
+                    URL.prototype.toString = function() { return this.href; };
+                    URL.prototype.toJSON = function() { return this.href; };
+                }
             })();
             "#,
         );

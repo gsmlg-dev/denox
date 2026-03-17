@@ -501,6 +501,7 @@ dependencies = [
  "anyhow",
  "deno_ast",
  "deno_core",
+ "getrandom",
  "rustler",
  "serde",
  "serde_json",
