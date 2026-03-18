@@ -143,7 +143,7 @@ defmodule Denox do
 
   ## Example
 
-      task = Denox.eval_async(rt, "return await fetch('https://example.com').then(r => r.status)")
+      task = Denox.eval_async(rt, "return (await fetch('https://httpbin.org/get')).status")
       {:ok, "200"} = Task.await(task)
 
   """
