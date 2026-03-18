@@ -368,6 +368,36 @@ Events emitted via `:telemetry`:
 
 Eval types: `:eval`, `:eval_ts`, `:eval_async`, `:eval_ts_async`, `:eval_module`, `:eval_file`, `:call`
 
+## Built-in Web/Node.js Globals
+
+Every Denox runtime comes with comprehensive web-standard and Node.js-compatible globals polyfilled out of the box — no extra configuration needed. JS code evaluated via `Denox.eval` or `Denox.eval_async` can use these immediately:
+
+- **Console**: `console.log`, `console.warn`, `console.error`, `console.info`, `console.debug`, `console.dir`, `console.table`, `console.time`/`timeEnd`, `console.count`/`countReset`, `console.assert`, `console.group`/`groupEnd`, `console.clear`
+- **Encoding**: `atob`, `btoa`, `TextEncoder`, `TextDecoder`
+- **Timers**: `setTimeout`, `setInterval`, `clearTimeout`, `clearInterval` (require `eval_async` to execute)
+- **Fetch API**: `fetch`, `Headers`, `Request`, `Response` (real HTTP via native ops — `fetch` requires `eval_async`)
+- **Crypto**: `crypto.getRandomValues`, `crypto.randomUUID`
+- **URL**: `URL`, `URLSearchParams`
+- **Events**: `Event`, `EventTarget`, `AbortController`, `AbortSignal`, `DOMException`
+- **Structured data**: `structuredClone`, `queueMicrotask`
+- **Performance**: `performance.now()`, `performance.timeOrigin`
+- **Navigator**: `navigator.userAgent` (`"Denox"`), `navigator.language` (`"en"`), `navigator.hardwareConcurrency`
+
+```elixir
+# Base64 encoding — works in sync eval
+{:ok, ~s("SGVsbG8=")} = Denox.eval(rt, ~s[btoa("Hello")])
+
+# Fetch — requires async eval (returns Promise)
+task = Denox.eval_async(rt, "return (await fetch('https://api.example.com/data')).status")
+{:ok, "200"} = Denox.await(task, 10_000)
+
+# Crypto
+{:ok, "true"} = Denox.eval(rt, """
+  var uuid = crypto.randomUUID();
+  /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(uuid)
+""")
+```
+
 ## Common Mistakes
 
 | Mistake | Fix |
