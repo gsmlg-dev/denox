@@ -285,6 +285,95 @@ defmodule DenoxGlobalsTest do
     end
   end
 
+  describe "fetch" do
+    test "fetch global exists", %{rt: rt} do
+      assert {:ok, ~s("function")} = Denox.eval(rt, "typeof fetch")
+    end
+
+    test "Headers class works", %{rt: rt} do
+      code = """
+      var h = new Headers({"Content-Type": "text/plain", "X-Custom": "test"});
+      h.get("content-type")
+      """
+
+      assert {:ok, ~s("text/plain")} = Denox.eval(rt, code)
+    end
+
+    test "Headers append combines values", %{rt: rt} do
+      code = """
+      var h = new Headers();
+      h.append("Accept", "text/html");
+      h.append("Accept", "application/json");
+      h.get("accept")
+      """
+
+      assert {:ok, ~s("text/html, application/json")} = Denox.eval(rt, code)
+    end
+
+    test "Request class works", %{rt: rt} do
+      code = """
+      var req = new Request("https://example.com", { method: "POST" });
+      req.method + " " + req.url
+      """
+
+      assert {:ok, ~s("POST https://example.com")} = Denox.eval(rt, code)
+    end
+
+    test "Response class works", %{rt: rt} do
+      code = """
+      var resp = new Response("hello", { status: 200, statusText: "OK" });
+      resp.ok && resp.status === 200 && resp.statusText === "OK"
+      """
+
+      assert {:ok, "true"} = Denox.eval(rt, code)
+    end
+
+    @tag :network
+    test "fetch GET returns status", %{rt: rt} do
+      task = Denox.eval_async(rt, "return (await fetch('https://httpbin.org/get')).status")
+      assert {:ok, "200"} = Task.await(task, 30_000)
+    end
+
+    @tag :network
+    test "fetch response text() works", %{rt: rt} do
+      code = """
+      var resp = await fetch('https://httpbin.org/get');
+      return (await resp.text()).includes('httpbin')
+      """
+
+      task = Denox.eval_async(rt, code)
+      assert {:ok, "true"} = Task.await(task, 30_000)
+    end
+
+    @tag :network
+    test "fetch response json() works", %{rt: rt} do
+      code = """
+      var resp = await fetch('https://httpbin.org/get');
+      var data = await resp.json();
+      return typeof data.url === 'string'
+      """
+
+      task = Denox.eval_async(rt, code)
+      assert {:ok, "true"} = Task.await(task, 30_000)
+    end
+
+    @tag :network
+    test "fetch response headers accessible", %{rt: rt} do
+      code = """
+      var resp = await fetch('https://httpbin.org/get');
+      return resp.headers.has('content-type')
+      """
+
+      task = Denox.eval_async(rt, code)
+      assert {:ok, "true"} = Task.await(task, 30_000)
+    end
+
+    test "fetch rejects on invalid URL", %{rt: rt} do
+      task = Denox.eval_async(rt, "return await fetch('not-a-url')")
+      assert {:error, _} = Task.await(task, 10_000)
+    end
+  end
+
   describe "URL / URLSearchParams" do
     test "URL constructor works", %{rt: rt} do
       code = """
