@@ -1,4 +1,13 @@
-## v0.4.0
+## v0.4.1
+
+### Changes
+
+- feat: add 206 comprehensive web/Node.js global polyfills
+- feat: add globalThis.fetch polyfill with Headers/Request/Response
+- fix: add :mix to Dialyzer PLT apps for Mix.Task modules
+- fix: add credo and dialyxir deps, resolve all credo issues
+- fix: add Rust toolchain and DENOX_BUILD to CI workflow
+
 
 ### Changes
 
