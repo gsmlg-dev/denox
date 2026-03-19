@@ -1,5 +1,11 @@
 # Denox
 
+[![Hex.pm](https://img.shields.io/hexpm/v/denox.svg)](https://hex.pm/packages/denox)
+[![Hex Docs](https://img.shields.io/badge/hex-docs-blue.svg)](https://hexdocs.pm/denox)
+[![CI](https://github.com/gsmlg-dev/denox/actions/workflows/ci.yml/badge.svg)](https://github.com/gsmlg-dev/denox/actions/workflows/ci.yml)
+[![Test](https://github.com/gsmlg-dev/denox/actions/workflows/test.yml/badge.svg)](https://github.com/gsmlg-dev/denox/actions/workflows/test.yml)
+[![License: MIT](https://img.shields.io/hexpm/l/denox.svg)](https://opensource.org/licenses/MIT)
+
 Embed the [Deno](https://deno.land) TypeScript/JavaScript runtime in Elixir via a Rustler NIF.
 
 Denox gives Elixir applications first-class access to the JS/TS ecosystem — evaluate JavaScript, transpile and run TypeScript, load ES modules, import from CDNs, and manage npm/jsr dependencies — all in-process, no external services required.
@@ -26,7 +32,7 @@ Add `denox` to your list of dependencies in `mix.exs`:
 ```elixir
 def deps do
   [
-    {:denox, "~> 0.1.0"}
+    {:denox, "~> 0.4"}
   ]
 end
 ```
