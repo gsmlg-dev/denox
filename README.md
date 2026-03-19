@@ -95,6 +95,89 @@ children = [
 {:ok, result} = Denox.Pool.eval_async(:js_pool, "return await Promise.resolve(99)")
 ```
 
+## Deno Subprocess (`Denox.Run`)
+
+Run full Deno programs as managed OTP subprocesses with bidirectional stdio. Ideal for running MCP servers, CLI tools, or any npm/jsr package that needs its own process.
+
+```elixir
+# Run an MCP server from npm
+{:ok, mcp} = Denox.Run.start_link(
+  package: "@modelcontextprotocol/server-github",
+  permissions: :all,
+  env: %{"GITHUB_PERSONAL_ACCESS_TOKEN" => System.fetch_env!("GITHUB_TOKEN")}
+)
+
+# Send JSON-RPC initialize request via stdin
+Denox.Run.send(mcp, Jason.encode!(%{
+  jsonrpc: "2.0",
+  method: "initialize",
+  id: 1,
+  params: %{
+    protocolVersion: "2024-11-05",
+    capabilities: %{},
+    clientInfo: %{name: "denox", version: "0.4.0"}
+  }
+}))
+
+# Read the response from stdout
+{:ok, response} = Denox.Run.recv(mcp, timeout: 10_000)
+%{"result" => %{"capabilities" => capabilities}} = Jason.decode!(response)
+```
+
+### Running other MCP servers
+
+```elixir
+# Filesystem MCP server
+{:ok, fs} = Denox.Run.start_link(
+  package: "@modelcontextprotocol/server-filesystem",
+  permissions: :all,
+  args: ["/path/to/allowed/directory"]
+)
+
+# Any npm package that provides a CLI
+{:ok, pid} = Denox.Run.start_link(
+  package: "cowsay",
+  permissions: :all,
+  args: ["Hello from Elixir!"]
+)
+```
+
+### Subscribe to output
+
+```elixir
+{:ok, mcp} = Denox.Run.start_link(
+  package: "@modelcontextprotocol/server-github",
+  permissions: :all,
+  env: %{"GITHUB_PERSONAL_ACCESS_TOKEN" => token}
+)
+
+# Subscribe to receive all stdout lines as messages
+Denox.Run.subscribe(mcp)
+
+# Messages arrive as:
+#   {:denox_run_stdout, pid, line}
+#   {:denox_run_exit, pid, exit_status}
+```
+
+### Supervision
+
+```elixir
+# Add to your supervision tree
+children = [
+  {Denox.Run,
+   package: "@modelcontextprotocol/server-github",
+   permissions: :all,
+   env: %{"GITHUB_PERSONAL_ACCESS_TOKEN" => token},
+   name: :github_mcp}
+]
+
+Supervisor.start_link(children, strategy: :one_for_one)
+
+# Use the named process
+Denox.Run.send(:github_mcp, request)
+{:ok, response} = Denox.Run.recv(:github_mcp)
+```
+
 ## Import Maps
 
 Resolve bare specifiers to file paths or URLs:
