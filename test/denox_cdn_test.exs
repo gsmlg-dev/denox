@@ -13,7 +13,7 @@ defmodule DenoxCdnTest do
       code = """
       const { z } = await import("https://esm.sh/zod@3.22.4");
       const schema = z.object({ name: z.string() });
-      return schema.parse({ name: "hello" });
+      export default schema.parse({ name: "hello" });
       """
 
       assert {:ok, json} = Task.await(Denox.eval_async(rt, code))
@@ -27,7 +27,7 @@ defmodule DenoxCdnTest do
       # First import — fetches from network
       code = """
       const mod = await import("https://esm.sh/lodash-es@4.17.21/add");
-      return mod.default(2, 3);
+      export default mod.default(2, 3);
       """
 
       assert {:ok, "5"} = Task.await(Denox.eval_async(rt, code))
@@ -38,7 +38,7 @@ defmodule DenoxCdnTest do
       # Second import on same runtime — should use in-memory cache
       code2 = """
       const mod = await import("https://esm.sh/lodash-es@4.17.21/add");
-      return mod.default(10, 20);
+      export default mod.default(10, 20);
       """
 
       assert {:ok, "30"} = Task.await(Denox.eval_async(rt, code2))
@@ -52,7 +52,7 @@ defmodule DenoxCdnTest do
 
       code = """
       const mod = await import("https://esm.sh/lodash-es@4.17.21/add");
-      return mod.default(1, 2);
+      export default mod.default(1, 2);
       """
 
       assert {:ok, "3"} = Task.await(Denox.eval_async(rt1, code))
@@ -67,7 +67,7 @@ defmodule DenoxCdnTest do
       {:ok, rt} = Denox.runtime()
 
       code = """
-      return await import("https://this-domain-definitely-does-not-exist-12345.invalid/mod.js");
+      const _mod = await import("https://this-domain-definitely-does-not-exist-12345.invalid/mod.js");
       """
 
       assert {:error, msg} = Task.await(Denox.eval_async(rt, code))

@@ -20,8 +20,8 @@ defmodule Denox.Deps do
 
       # 4. Use bare specifier imports
       Denox.eval_async(rt, ~s[
-        const { z } = await import("zod");
-        return z.string().parse("hello");
+        import { z } from "zod";
+        export default z.string().parse("hello");
       ]) |> Task.await()
   """
 

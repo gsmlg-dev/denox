@@ -25,8 +25,8 @@ defmodule Denox.ImportMapTest do
       {:ok, result} =
         Task.await(
           Denox.eval_async(rt, """
-          const mod = await import("math");
-          return mod.PI;
+          import { PI } from "math";
+          export default PI;
           """)
         )
 
@@ -55,9 +55,9 @@ defmodule Denox.ImportMapTest do
       {:ok, result} =
         Task.await(
           Denox.eval_async(rt, """
-          const { FOO } = await import("foo");
-          const { BAR } = await import("bar");
-          return FOO + BAR;
+          import { FOO } from "foo";
+          import { BAR } from "bar";
+          export default FOO + BAR;
           """)
         )
 
@@ -92,9 +92,9 @@ defmodule Denox.ImportMapTest do
       {:ok, result} =
         Task.await(
           Denox.eval_async(rt, """
-          const { add } = await import("mylib/add.ts");
-          const { mul } = await import("mylib/mul.ts");
-          return add(2, 3) * mul(4, 5);
+          import { add } from "mylib/add.ts";
+          import { mul } from "mylib/mul.ts";
+          export default add(2, 3) * mul(4, 5);
           """)
         )
 
@@ -176,7 +176,7 @@ defmodule Denox.ImportMapTest do
         Task.await(
           Denox.Pool.eval_async(pool, """
           const mod = await import("value");
-          return mod.VALUE;
+          export default mod.VALUE;
           """)
         )
 

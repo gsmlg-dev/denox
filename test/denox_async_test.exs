@@ -10,19 +10,19 @@ defmodule DenoxAsyncTest do
 
   describe "eval_async/2 Promises" do
     test "resolves Promise.resolve", %{rt: rt} do
-      assert {:ok, "42"} = Task.await(Denox.eval_async(rt, "return await Promise.resolve(42)"))
+      assert {:ok, "42"} = Task.await(Denox.eval_async(rt, "export default await Promise.resolve(42)"))
     end
 
     test "rejects Promise.reject", %{rt: rt} do
       assert {:error, msg} =
-               Task.await(Denox.eval_async(rt, ~s[return await Promise.reject("fail")]))
+               Task.await(Denox.eval_async(rt, ~s[export default await Promise.reject("fail")]))
 
       assert msg =~ "fail"
     end
 
     test "Promise chaining", %{rt: rt} do
       code = """
-      return await Promise.resolve(10)
+      export default await Promise.resolve(10)
         .then(x => x * 2)
         .then(x => x + 1)
       """
@@ -35,7 +35,7 @@ defmodule DenoxAsyncTest do
       async function fetchValue() {
         return 99;
       }
-      return await fetchValue();
+      export default await fetchValue();
       """
 
       assert {:ok, "99"} = Task.await(Denox.eval_async(rt, code))
@@ -53,7 +53,7 @@ defmodule DenoxAsyncTest do
       async function compute(x: number): Promise<number> {
         return x * x;
       }
-      return await compute(7);
+      export default await compute(7);
       """
 
       assert {:ok, "49"} = Task.await(Denox.eval_ts_async(rt, code))
@@ -63,7 +63,7 @@ defmodule DenoxAsyncTest do
       code = """
       interface Result { value: number }
       const p: Promise<Result> = Promise.resolve({ value: 42 });
-      return await p;
+      export default await p;
       """
 
       assert {:ok, json} = Task.await(Denox.eval_ts_async(rt, code))
@@ -81,7 +81,7 @@ defmodule DenoxAsyncTest do
 
       code = """
       const mod = await import("./mod.ts");
-      return mod.VALUE;
+      export default mod.VALUE;
       """
 
       assert {:ok, "123"} = Task.await(Denox.eval_async(rt, code))
@@ -101,7 +101,7 @@ defmodule DenoxAsyncTest do
     test "returns error for TypeError in async code", %{rt: rt} do
       code = """
       const obj = undefined;
-      return await Promise.resolve(obj.property);
+      export default await Promise.resolve(obj.property);
       """
 
       assert {:error, msg} = Task.await(Denox.eval_async(rt, code))
@@ -117,14 +117,14 @@ defmodule DenoxAsyncTest do
       assert {:error, _} = Task.await(Denox.eval_async(rt, code))
 
       # Runtime should still work
-      assert {:ok, "42"} = Task.await(Denox.eval_async(rt, "return 42"))
+      assert {:ok, "42"} = Task.await(Denox.eval_async(rt, "export default 42"))
     end
   end
 
   describe "eval_async/2 microtasks" do
     test "queueMicrotask resolves via event loop", %{rt: rt} do
       code = """
-      return await new Promise(resolve => {
+      export default await new Promise(resolve => {
         queueMicrotask(() => resolve(42));
       });
       """

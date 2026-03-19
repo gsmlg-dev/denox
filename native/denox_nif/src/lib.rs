@@ -90,18 +90,17 @@ fn transpile_inline(ts_code: &str) -> Result<String, String> {
     Ok(transpiled.into_source().text)
 }
 
-/// Process a V8 eval: execute code, pump event loop, resolve Promises.
+/// Process a V8 eval: execute code as a plain script, pump event loop,
+/// resolve Promises.
 ///
-/// When `wrap_async` is true, wraps code in `(async () => { ... })()` so that
-/// `await` and `return` work at the top level. When false, code runs as a
-/// plain script — simple expressions like `1 + 2` work without `return`.
+/// Code runs as a plain script — simple expressions like `1 + 2` work
+/// without `return`. For module-style evaluation with `import`/`export`,
+/// use `process_eval_module_code` instead.
 fn process_eval(
     runtime: &mut JsRuntime,
     tokio_rt: &tokio::runtime::Runtime,
     code: String,
     transpile: bool,
-    wrap_async: bool,
-    script_name: &'static str,
 ) -> Result<String, String> {
     let js_code = if transpile {
         transpile_inline(&code)?
@@ -109,14 +108,8 @@ fn process_eval(
         code
     };
 
-    let js_code = if wrap_async {
-        format!("(async () => {{ {} }})()", js_code)
-    } else {
-        js_code
-    };
-
     let result = runtime
-        .execute_script(script_name, js_code)
+        .execute_script("<denox>", js_code)
         .map_err(|e| format!("{}", e))?;
 
     // Pump the event loop to settle any pending Promises / dynamic imports
@@ -192,6 +185,61 @@ fn process_eval_module(
     Ok("undefined".to_string())
 }
 
+/// Process inline code as an ES module: transpile (optionally), load, evaluate,
+/// and extract the `default` export as JSON.
+///
+/// Unlike `process_eval` (which uses `execute_script`), this uses
+/// `load_main_es_module_from_code` so that static `import`/`export` declarations
+/// work. The caller must supply a unique specifier per invocation to avoid
+/// module-cache collisions.
+fn process_eval_module_code(
+    runtime: &mut JsRuntime,
+    tokio_rt: &tokio::runtime::Runtime,
+    code: String,
+    transpile: bool,
+    specifier: &deno_core::url::Url,
+) -> Result<String, String> {
+    let js_code = if transpile {
+        transpile_inline(&code)?
+    } else {
+        code
+    };
+
+    let mod_id = tokio_rt
+        .block_on(runtime.load_side_es_module_from_code(specifier, js_code))
+        .map_err(|e| format!("Module load error: {}", e))?;
+
+    let result = runtime.mod_evaluate(mod_id);
+
+    tokio_rt
+        .block_on(runtime.run_event_loop(Default::default()))
+        .map_err(|e| format!("Event loop error: {}", e))?;
+
+    tokio_rt
+        .block_on(result)
+        .map_err(|e| format!("Module evaluation error: {}", e))?;
+
+    // Extract `default` export from module namespace
+    let namespace = runtime
+        .get_module_namespace(mod_id)
+        .map_err(|e| format!("Failed to get module namespace: {}", e))?;
+
+    let scope = &mut runtime.handle_scope();
+    let ns_local = deno_core::v8::Local::new(scope, namespace);
+    let key = deno_core::v8::String::new(scope, "default").unwrap();
+
+    match ns_local.get(scope, key.into()) {
+        Some(val) if !val.is_undefined() => {
+            match deno_core::serde_v8::from_v8::<serde_json::Value>(scope, val) {
+                Ok(json_val) => serde_json::to_string(&json_val)
+                    .map_err(|e| format!("JSON serialization error: {}", e)),
+                Err(_) => Ok(val.to_rust_string_lossy(scope)),
+            }
+        }
+        _ => Ok("undefined".to_string()),
+    }
+}
+
 /// Create a V8 snapshot from setup code. Returns the snapshot as a binary.
 #[rustler::nif(schedule = "DirtyCpu")]
 fn create_snapshot<'a>(
@@ -257,22 +305,20 @@ fn runtime_new(
             .build()
             .expect("Failed to create tokio runtime");
 
-        // Compute the async script name using the base_dir (or cwd fallback).
+        let loader_cache_dir = if cache_dir.is_empty() {
+            None
+        } else {
+            Some(cache_dir)
+        };
+
+        // Compute the base directory URL for module specifiers so that
+        // relative imports (e.g. `./mod.ts`) resolve correctly.
         let base = if !base_dir.is_empty() {
             std::path::PathBuf::from(&base_dir)
                 .canonicalize()
                 .unwrap_or_else(|_| std::path::PathBuf::from(&base_dir))
         } else {
             std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("/"))
-        };
-        let script_url = deno_core::url::Url::from_file_path(base.join("__denox_async.js"))
-            .unwrap_or_else(|_| deno_core::url::Url::parse("file:///denox_async.js").unwrap());
-        let script_name: &'static str = Box::leak(script_url.to_string().into_boxed_str());
-
-        let loader_cache_dir = if cache_dir.is_empty() {
-            None
-        } else {
-            Some(cache_dir)
         };
 
         let mut runtime = tokio_rt.block_on(async {
@@ -2008,7 +2054,7 @@ fn runtime_new(
                     reply,
                 } => {
                     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                        process_eval(&mut runtime, &tokio_rt, code, transpile, false, "<denox>")
+                        process_eval(&mut runtime, &tokio_rt, code, transpile)
                     }))
                     .unwrap_or_else(|panic_val| {
                         let msg = panic_message(&panic_val);
@@ -2021,8 +2067,28 @@ fn runtime_new(
                     transpile,
                     reply,
                 } => {
+                    // Use a unique specifier per eval to avoid module cache collisions
+                    static COUNTER: std::sync::atomic::AtomicU64 =
+                        std::sync::atomic::AtomicU64::new(0);
+                    let n = COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                    let spec = deno_core::url::Url::from_file_path(
+                        base.join(format!("__denox_eval_async_{n}.js")),
+                    )
+                    .unwrap_or_else(|_| {
+                        deno_core::url::Url::parse(&format!(
+                            "file:///denox_eval_async_{n}.js"
+                        ))
+                        .unwrap()
+                    });
+
                     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                        process_eval(&mut runtime, &tokio_rt, code, transpile, true, script_name)
+                        process_eval_module_code(
+                            &mut runtime,
+                            &tokio_rt,
+                            code,
+                            transpile,
+                            &spec,
+                        )
                     }))
                     .unwrap_or_else(|panic_val| {
                         let msg = panic_message(&panic_val);

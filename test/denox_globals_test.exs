@@ -330,15 +330,15 @@ defmodule DenoxGlobalsTest do
 
     @tag :network
     test "fetch GET returns status", %{rt: rt} do
-      task = Denox.eval_async(rt, "return (await fetch('https://httpbin.org/get')).status")
+      task = Denox.eval_async(rt, "export default (await fetch('https://httpbin.org/get')).status")
       assert {:ok, "200"} = Task.await(task, 30_000)
     end
 
     @tag :network
     test "fetch response text() works", %{rt: rt} do
       code = """
-      var resp = await fetch('https://httpbin.org/get');
-      return (await resp.text()).includes('httpbin')
+      const resp = await fetch('https://httpbin.org/get');
+      export default (await resp.text()).includes('httpbin')
       """
 
       task = Denox.eval_async(rt, code)
@@ -348,9 +348,9 @@ defmodule DenoxGlobalsTest do
     @tag :network
     test "fetch response json() works", %{rt: rt} do
       code = """
-      var resp = await fetch('https://httpbin.org/get');
-      var data = await resp.json();
-      return typeof data.url === 'string'
+      const resp = await fetch('https://httpbin.org/get');
+      const data = await resp.json();
+      export default typeof data.url === 'string'
       """
 
       task = Denox.eval_async(rt, code)
@@ -360,8 +360,8 @@ defmodule DenoxGlobalsTest do
     @tag :network
     test "fetch response headers accessible", %{rt: rt} do
       code = """
-      var resp = await fetch('https://httpbin.org/get');
-      return resp.headers.has('content-type')
+      const resp = await fetch('https://httpbin.org/get');
+      export default resp.headers.has('content-type')
       """
 
       task = Denox.eval_async(rt, code)
@@ -369,7 +369,7 @@ defmodule DenoxGlobalsTest do
     end
 
     test "fetch rejects on invalid URL", %{rt: rt} do
-      task = Denox.eval_async(rt, "return await fetch('not-a-url')")
+      task = Denox.eval_async(rt, "export default await fetch('not-a-url')")
       assert {:error, _} = Task.await(task, 10_000)
     end
   end

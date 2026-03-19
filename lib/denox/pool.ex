@@ -171,7 +171,7 @@ defmodule Denox.Pool do
   def handle_call({:call_async, func_name, args}, _from, state) do
     {rt, state} = next_runtime(state)
     args_json = Denox.JSON.encode!(args)
-    code = "return await ((args) => #{func_name}(...args))(#{args_json})"
+    code = "export default await ((args) => #{func_name}(...args))(#{args_json})"
     {:reply, Denox.Native.eval_async(rt, code, false), state}
   end
 

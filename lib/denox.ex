@@ -134,17 +134,24 @@ defmodule Denox do
   # --- Async eval (returns Task for concurrent execution) ---
 
   @doc """
-  Evaluate JavaScript code asynchronously, returning a `Task`.
+  Evaluate JavaScript code as an ES module, returning a `Task`.
 
-  The code is wrapped in an async IIFE, so `await` and `return` work
-  at the top level. Use `Task.await/2` to get the result.
+  The code is evaluated as a proper ES module, so static `import`/`export`
+  declarations and top-level `await` work natively. Use `export default`
+  to return a value.
 
   Returns a `Task` that resolves to `{:ok, json_string}` or `{:error, message}`.
 
   ## Example
 
-      task = Denox.eval_async(rt, "return (await fetch('https://httpbin.org/get')).status")
+      task = Denox.eval_async(rt, "const status = (await fetch('https://httpbin.org/get')).status; export default status;")
       {:ok, "200"} = Task.await(task)
+
+      # Static imports work:
+      task = Denox.eval_async(rt, \"\"\"
+        import { something } from './my_module.js';
+        export default something;
+      \"\"\")
 
   """
   @spec eval_async(runtime(), String.t()) :: Task.t()
@@ -155,7 +162,10 @@ defmodule Denox do
   end
 
   @doc """
-  Evaluate TypeScript code asynchronously, returning a `Task`.
+  Evaluate TypeScript code as an ES module, returning a `Task`.
+
+  Supports static `import`/`export` declarations and top-level `await`.
+  Use `export default` to return a value.
 
   Returns a `Task` that resolves to `{:ok, json_string}` or `{:error, message}`.
   """
@@ -223,7 +233,7 @@ defmodule Denox do
   @spec call_async(runtime(), String.t(), list()) :: Task.t()
   def call_async(rt, func_name, args \\ []) do
     args_json = Denox.JSON.encode!(args)
-    code = "return await ((args) => #{func_name}(...args))(#{args_json})"
+    code = "export default await ((args) => #{func_name}(...args))(#{args_json})"
 
     Task.async(fn ->
       Native.eval_async(rt, code, false)
@@ -240,7 +250,7 @@ defmodule Denox do
 
   ## Example
 
-      Denox.eval_async(rt, "return await Promise.resolve(42)")
+      Denox.eval_async(rt, "export default await Promise.resolve(42)")
       |> Denox.await()
       #=> {:ok, "42"}
 
@@ -281,7 +291,7 @@ defmodule Denox do
   @spec call_async_decode(runtime(), String.t(), list()) :: Task.t()
   def call_async_decode(rt, func_name, args \\ []) do
     args_json = Denox.JSON.encode!(args)
-    code = "return await ((args) => #{func_name}(...args))(#{args_json})"
+    code = "export default await ((args) => #{func_name}(...args))(#{args_json})"
 
     Task.async(fn ->
       with {:ok, json} <- Native.eval_async(rt, code, false), do: Denox.JSON.decode(json)
