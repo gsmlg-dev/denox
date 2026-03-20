@@ -186,6 +186,41 @@ defmodule DenoxCLIRunFakeTest do
     end
   end
 
+  describe "resolve_specifier — file:// prefix" do
+    test "passes file:// specifier through unchanged" do
+      write_fake_deno(~s[echo "ok"])
+
+      # package: "file://something" → resolve_specifier → "file://something" (line 144-145)
+      {:ok, pid} = Denox.CLI.Run.start_link(package: "file://test.ts", permissions: :all)
+      {:ok, _} = Denox.CLI.Run.recv(pid, timeout: 5000)
+      Denox.CLI.Run.stop(pid)
+    end
+
+    test "passes npm: specifier through unchanged" do
+      write_fake_deno(~s[echo "ok"])
+
+      # package: "npm:pkg@1.0" → resolve_specifier → unchanged (line 144-145)
+      {:ok, pid} = Denox.CLI.Run.start_link(package: "npm:pkg@1.0", permissions: :all)
+      {:ok, _} = Denox.CLI.Run.recv(pid, timeout: 5000)
+      Denox.CLI.Run.stop(pid)
+    end
+  end
+
+  describe "handle_info fallback" do
+    test "unknown messages are silently ignored" do
+      write_fake_deno("sleep 60")
+
+      {:ok, pid} = Denox.CLI.Run.start_link(file: "test.ts", permissions: :all)
+
+      # Sends an unknown message — handle_info/2 line 109 → super(msg, state) (line 110)
+      send(pid, {:unknown_msg, :for_testing})
+
+      # GenServer should still be alive
+      assert Denox.CLI.Run.alive?(pid)
+      Denox.CLI.Run.stop(pid)
+    end
+  end
+
   describe "build_env" do
     test "converts string env keys/values" do
       write_fake_deno(~s[echo "ok"])
@@ -196,6 +231,21 @@ defmodule DenoxCLIRunFakeTest do
           file: "test.ts",
           permissions: :all,
           env: %{"MY_TEST_KEY" => "my_value"}
+        )
+
+      {:ok, _} = Denox.CLI.Run.recv(pid, timeout: 5000)
+      Denox.CLI.Run.stop(pid)
+    end
+
+    test "converts atom env keys/values" do
+      write_fake_deno(~s[echo "ok"])
+
+      # env: %{KEY: "value"} → env_to_charlist atom key (line 195)
+      {:ok, pid} =
+        Denox.CLI.Run.start_link(
+          file: "test.ts",
+          permissions: :all,
+          env: %{MY_ATOM_KEY: "atom_value"}
         )
 
       {:ok, _} = Denox.CLI.Run.recv(pid, timeout: 5000)
