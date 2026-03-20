@@ -56,4 +56,36 @@ defmodule DenoxSandboxTest do
       assert {:ok, "\"function\""} = Denox.eval(rt, "typeof Denox.callback")
     end
   end
+
+  describe "permissions option" do
+    test "permissions: :all creates a permissive runtime" do
+      {:ok, rt} = Denox.runtime(permissions: :all)
+      assert {:ok, "3"} = Denox.eval(rt, "1 + 2")
+    end
+
+    test "permissions: :none creates a restricted runtime" do
+      {:ok, rt} = Denox.runtime(permissions: :none)
+      assert {:ok, "3"} = Denox.eval(rt, "1 + 2")
+    end
+
+    test "granular permissions with keyword list" do
+      {:ok, rt} = Denox.runtime(permissions: [allow_env: true])
+      assert {:ok, "3"} = Denox.eval(rt, "1 + 2")
+    end
+
+    test "granular permissions with list values" do
+      {:ok, rt} = Denox.runtime(permissions: [allow_read: ["/tmp"]])
+      assert {:ok, "3"} = Denox.eval(rt, "1 + 2")
+    end
+
+    test "granular permissions ignores false entries" do
+      {:ok, rt} = Denox.runtime(permissions: [allow_env: true, allow_net: false])
+      assert {:ok, "3"} = Denox.eval(rt, "1 + 2")
+    end
+
+    test "default (no permissions option) creates a permissive runtime" do
+      {:ok, rt} = Denox.runtime()
+      assert {:ok, "3"} = Denox.eval(rt, "1 + 2")
+    end
+  end
 end

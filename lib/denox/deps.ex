@@ -39,6 +39,7 @@ defmodule Denox.Deps do
 
   Returns `:ok` or `{:error, message}`.
   """
+  @spec install(keyword()) :: :ok | {:error, String.t()}
   def install(opts \\ []) do
     config = Keyword.get(opts, :config, @deno_json)
 
@@ -60,6 +61,7 @@ defmodule Denox.Deps do
 
   Returns `{:ok, runtime}` or `{:error, message}`.
   """
+  @spec runtime(keyword()) :: {:ok, Denox.runtime()} | {:error, String.t()}
   def runtime(opts \\ []) do
     config = Keyword.get(opts, :config, @deno_json)
     cache_dir = Keyword.get(opts, :cache_dir, @cache_dir)
@@ -93,6 +95,7 @@ defmodule Denox.Deps do
       Denox.Deps.add("zod", "npm:zod@^3.22")
       Denox.Deps.add("@std/path", "jsr:@std/path@^1.0")
   """
+  @spec add(String.t(), String.t(), keyword()) :: :ok | {:error, String.t()}
   def add(name, specifier, opts \\ []) do
     config = Keyword.get(opts, :config, @deno_json)
 
@@ -106,6 +109,7 @@ defmodule Denox.Deps do
   @doc """
   Remove a dependency from deno.json and reinstall.
   """
+  @spec remove(String.t(), keyword()) :: :ok | {:error, String.t()}
   def remove(name, opts \\ []) do
     config = Keyword.get(opts, :config, @deno_json)
 
@@ -121,6 +125,7 @@ defmodule Denox.Deps do
 
   Returns `{:ok, %{name => specifier}}` or `{:error, message}`.
   """
+  @spec list(keyword()) :: {:ok, %{String.t() => String.t()}} | {:error, String.t()}
   def list(opts \\ []) do
     config = Keyword.get(opts, :config, @deno_json)
 
@@ -142,6 +147,7 @@ defmodule Denox.Deps do
 
   Returns `:ok` or `{:error, message}`.
   """
+  @spec check(keyword()) :: :ok | {:error, String.t()}
   def check(opts \\ []) do
     # Support legacy vendor_dir option for backwards compatibility
     if vendor_dir = Keyword.get(opts, :vendor_dir) do

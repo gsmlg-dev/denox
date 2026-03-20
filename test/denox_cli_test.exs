@@ -86,6 +86,50 @@ defmodule DenoxCLITest do
     end
   end
 
+  describe "find_deno/0" do
+    test "returns system deno when available on PATH" do
+      # find_deno tries System.find_executable("deno") first
+      case System.find_executable("deno") do
+        nil ->
+          # No system deno — test the fallback path
+          Application.delete_env(:denox, :cli)
+          assert {:error, msg} = Denox.CLI.find_deno()
+          assert msg =~ "deno CLI not found"
+
+        path ->
+          assert {:ok, ^path} = Denox.CLI.find_deno()
+      end
+    end
+
+    test "falls back to bundled CLI when system deno is not available" do
+      # We can't easily remove deno from PATH in a test, but we can
+      # verify that when CLI is configured with a pre-existing binary,
+      # find_deno returns successfully
+      version = "77.77.77"
+      Application.put_env(:denox, :cli, version: version)
+
+      path = Path.join(["_build", "denox_cli-#{version}", "deno"])
+      File.mkdir_p!(Path.dirname(path))
+      File.write!(path, "fake-deno")
+      File.chmod!(path, 0o755)
+
+      on_exit(fn -> File.rm_rf(Path.dirname(path)) end)
+
+      assert {:ok, _} = Denox.CLI.find_deno()
+    end
+
+    test "returns error with actionable message when neither is available" do
+      Application.delete_env(:denox, :cli)
+
+      # Only test when system deno is NOT on PATH
+      if System.find_executable("deno") == nil do
+        assert {:error, msg} = Denox.CLI.find_deno()
+        assert msg =~ "deno CLI not found"
+        assert msg =~ "config :denox, :cli"
+      end
+    end
+  end
+
   describe "installed?/0 with pre-existing binary" do
     test "returns true when binary exists" do
       version = "88.88.88"

@@ -39,6 +39,7 @@ defmodule Denox.Npm do
       Denox.Npm.bundle("npm:zod@3.22", "priv/bundles/zod.js")
       Denox.Npm.bundle("npm:lodash-es@4.17", "priv/bundles/lodash.js", minify: true)
   """
+  @spec bundle(String.t(), String.t(), keyword()) :: :ok | {:error, String.t()}
   def bundle(specifier, output_path, opts \\ []) do
     with {:ok, deno_path} <- find_deno() do
       File.mkdir_p!(Path.dirname(output_path))
@@ -57,6 +58,7 @@ defmodule Denox.Npm do
 
   Same as `bundle/3` but raises on error.
   """
+  @spec bundle!(String.t(), String.t(), keyword()) :: :ok
   def bundle!(specifier, output_path, opts \\ []) do
     case bundle(specifier, output_path, opts) do
       :ok -> :ok
@@ -72,6 +74,7 @@ defmodule Denox.Npm do
 
   Returns `:ok` or `{:error, message}`.
   """
+  @spec load(Denox.runtime(), String.t()) :: :ok | {:error, String.t()}
   def load(rt, bundle_path) do
     case File.read(bundle_path) do
       {:ok, code} ->
@@ -94,6 +97,7 @@ defmodule Denox.Npm do
 
   Returns `:ok` or `{:error, message}`.
   """
+  @spec bundle_file(String.t(), String.t(), keyword()) :: :ok | {:error, String.t()}
   def bundle_file(entrypoint, output_path, opts \\ []) do
     with {:ok, deno_path} <- find_deno(),
          :ok <- check_entrypoint(entrypoint) do
