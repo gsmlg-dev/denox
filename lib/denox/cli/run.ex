@@ -152,7 +152,9 @@ defmodule Denox.CLI.Run do
   )a
 
   defp permissions_to_args(:all), do: ["-A"]
+  # nil and :none both mean "no explicit allow flags" (Deno denies by default in v2)
   defp permissions_to_args(nil), do: []
+  defp permissions_to_args(:none), do: []
 
   defp permissions_to_args(perms) when is_list(perms) do
     Enum.flat_map(perms, &permission_to_flag/1)
