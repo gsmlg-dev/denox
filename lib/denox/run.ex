@@ -33,6 +33,22 @@ defmodule Denox.Run do
       # Stop the process
       Denox.Run.stop(pid)
 
+  ## Telemetry Events
+
+  Denox.Run emits the following telemetry events:
+
+    * `[:denox, :run, :start]` — emitted when the runtime starts
+      * Measurements: `%{system_time: integer}`
+      * Metadata: `%{package: string | nil, file: string | nil, backend: :nif}`
+
+    * `[:denox, :run, :stop]` — emitted when the runtime exits
+      * Measurements: `%{system_time: integer}`
+      * Metadata: `%{package: string | nil, file: string | nil, exit_status: integer, backend: :nif}`
+
+    * `[:denox, :run, :recv]` — emitted for each stdout line received
+      * Measurements: `%{system_time: integer}`
+      * Metadata: `%{line_bytes: integer, backend: :nif}`
+
   ## Environment Variables
 
   The `:env` option passes environment variables to the Deno runtime via
