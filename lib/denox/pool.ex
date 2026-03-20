@@ -131,6 +131,12 @@ defmodule Denox.Pool do
     Task.async(fn -> GenServer.call(pool, {:eval_ts_async_decode, code}, :infinity) end)
   end
 
+  @doc "Load and evaluate an ES module file. Supports .ts/.js with import/export."
+  @spec eval_module(pool(), String.t()) :: {:ok, String.t()} | {:error, String.t()}
+  def eval_module(pool, path) do
+    GenServer.call(pool, {:eval_module, path}, :infinity)
+  end
+
   @doc "Read and evaluate a JavaScript or TypeScript file."
   @spec eval_file(pool(), String.t(), keyword()) :: {:ok, String.t()} | {:error, String.t()}
   def eval_file(pool, path, opts \\ []) do
@@ -297,6 +303,11 @@ defmodule Denox.Pool do
 
     decoded = with {:ok, json} <- result, do: Denox.JSON.decode(json)
     {:reply, decoded, state}
+  end
+
+  def handle_call({:eval_module, path}, _from, state) do
+    {rt, state} = next_runtime(state)
+    {:reply, Denox.eval_module(rt, path), state}
   end
 
   def handle_call({:eval_file, path, opts}, _from, state) do

@@ -178,6 +178,18 @@ defmodule DenoxPoolTest do
     end
   end
 
+  describe "pool eval_module" do
+    @tag :tmp_dir
+    test "loads and evaluates an ES module", %{tmp_dir: dir} do
+      pool = :"test_pool_module_#{:erlang.unique_integer([:positive])}"
+      start_supervised!({Denox.Pool, name: pool, size: 1})
+
+      path = Path.join(dir, "mod.js")
+      File.write!(path, "globalThis.fromModule = true;")
+      assert {:ok, "undefined"} = Denox.Pool.eval_module(pool, path)
+    end
+  end
+
   describe "pool load_npm" do
     @tag :tmp_dir
     test "loads bundled JS into all pool runtimes", %{tmp_dir: dir} do
