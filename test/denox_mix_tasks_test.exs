@@ -225,6 +225,26 @@ defmodule DenoxMixTasksTest do
         Mix.Task.run("denox.run", ["nonexistent_script_xyz_abc.ts"])
       end
     end
+
+    test "handles noeol output (output without trailing newline)", %{tmp_dir: dir} do
+      Mix.Task.reenable("denox.run")
+      script = Path.join(dir, "noeol.ts")
+      # Write output without trailing newline — deno uses Deno.stdout.write
+      File.write!(script, """
+      await Deno.stdout.write(new TextEncoder().encode("no newline here"));
+      """)
+
+      # stdout_loop receives {:noeol, chunk} → IO.write(chunk) → covers lines 79-80
+      Mix.Task.run("denox.run", ["file://#{script}"])
+    end
+
+    test "covers @ prefix specifier → npm: resolution", %{tmp_dir: dir} do
+      Mix.Task.reenable("denox.run")
+      # "@scope/pkg" → "npm:@scope/pkg" (line 151) → deno fails → Mix.raise
+      assert_raise Mix.Error, fn ->
+        Mix.Task.run("denox.run", ["@nonexistent-scope-xyz-abc/pkg-xyz-abc"])
+      end
+    end
   end
 
   describe "mix denox.cli.install" do
