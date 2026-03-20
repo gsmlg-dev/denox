@@ -32,6 +32,9 @@ defmodule Denox.Pool do
     - `:sandbox` - (deprecated) use `permissions: :none` instead
     - `:base_dir` - base directory for module resolution
     - `:cache_dir` - cache directory for remote modules
+    - `:import_map` - map of bare specifiers to resolved URLs/paths
+    - `:callback_pid` - PID that handles JS→Elixir callbacks
+    - `:snapshot` - V8 snapshot binary for faster cold start (applied to all runtimes)
   """
   @spec start_link(keyword()) :: GenServer.on_start()
   def start_link(opts) do
