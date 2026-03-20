@@ -9,9 +9,10 @@ defmodule Denox do
     * `[:denox, :eval, :start]` — emitted before evaluating code
       * Measurements: `%{system_time: integer}`
       * Metadata: `%{type: atom}` — type is the function name atom (e.g. `:eval`, `:eval_ts`,
-        `:eval_async`, `:eval_ts_async`, `:eval_module`, `:eval_file`, `:call`,
-        `:call_async`, `:eval_async_decode`, `:eval_ts_async_decode`, `:call_async_decode`)
-        Note: `*_decode` sync variants (`:eval_decode`, `:call_decode`, etc.) emit the base
+        `:eval_async`, `:eval_ts_async`, `:eval_module`, `:eval_file`, `:eval_file_async`,
+        `:call`, `:call_async`, `:eval_async_decode`, `:eval_ts_async_decode`,
+        `:eval_file_async_decode`, `:call_async_decode`)
+        Note: sync `*_decode` variants (`:eval_decode`, `:call_decode`, etc.) emit the base
         type (`:eval`, `:call`, etc.) since they delegate to the base function.
 
     * `[:denox, :eval, :stop]` — emitted after successful evaluation
@@ -380,8 +381,11 @@ defmodule Denox do
 
   defp do_eval_file_async(rt, path, transpile) do
     case File.read(path) do
-      {:ok, code} -> Native.eval_async(rt, code, transpile)
-      {:error, reason} -> {:error, "Failed to read #{path}: #{reason}"}
+      {:ok, code} ->
+        Denox.Telemetry.span(:eval_file_async, fn -> Native.eval_async(rt, code, transpile) end)
+
+      {:error, reason} ->
+        {:error, "Failed to read #{path}: #{reason}"}
     end
   end
 
@@ -399,12 +403,17 @@ defmodule Denox do
 
   defp do_eval_file_async_decode(rt, path, transpile) do
     case File.read(path) do
-      {:ok, code} ->
-        with {:ok, json} <- Native.eval_async(rt, code, transpile), do: Denox.JSON.decode(json)
-
-      {:error, reason} ->
-        {:error, "Failed to read #{path}: #{reason}"}
+      {:ok, code} -> do_eval_file_async_decode_code(rt, code, transpile)
+      {:error, reason} -> {:error, "Failed to read #{path}: #{reason}"}
     end
+  end
+
+  defp do_eval_file_async_decode_code(rt, code, transpile) do
+    with {:ok, json} <-
+           Denox.Telemetry.span(:eval_file_async_decode, fn ->
+             Native.eval_async(rt, code, transpile)
+           end),
+         do: Denox.JSON.decode(json)
   end
 
   defp build_permissions_json(opts, sandbox) do
