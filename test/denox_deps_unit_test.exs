@@ -98,6 +98,29 @@ defmodule DenoxDepsUnitTest do
     end
   end
 
+  describe "add/3 — success path" do
+    test "creates config and adds import entry when config does not exist", %{tmp_dir: dir} do
+      config = Path.join(dir, "new_deno.json")
+      refute File.exists?(config)
+
+      # add/3 may fail at the `deno install` step, but ensure_config and add_to_config should succeed
+      Denox.Deps.add("testpkg", "file:./nonexistent_pkg", config: config)
+      # Config file should have been created and updated regardless of deno install result
+      assert File.exists?(config)
+      {:ok, content} = File.read(config)
+      assert content =~ "testpkg"
+    end
+
+    test "updates existing config with new import entry", %{tmp_dir: dir} do
+      config = Path.join(dir, "deno.json")
+      write_json(config, %{"imports" => %{"existing" => "npm:existing@1.0"}})
+      Denox.Deps.add("newpkg", "npm:newpkg@^2.0", config: config)
+      {:ok, content} = File.read(config)
+      assert content =~ "newpkg"
+      assert content =~ "existing"
+    end
+  end
+
   describe "add/3 — error paths" do
     test "returns error when config has invalid JSON", %{tmp_dir: dir} do
       config = Path.join(dir, "deno.json")
@@ -149,6 +172,73 @@ defmodule DenoxDepsUnitTest do
       unless File.exists?("deno.json") do
         assert {:error, _} = Denox.Deps.list()
       end
+    end
+  end
+
+  describe "install/1 — default args" do
+    test "returns error when deno.json does not exist in CWD" do
+      unless File.exists?("deno.json") do
+        assert {:error, _} = Denox.Deps.install()
+      end
+    end
+  end
+
+  describe "runtime/1 — default args" do
+    test "returns error when deps not installed in CWD" do
+      unless File.exists?("deno.json") and File.dir?("node_modules") do
+        assert {:error, _} = Denox.Deps.runtime()
+      end
+    end
+  end
+
+  describe "remove/2 — default args" do
+    test "returns error when deno.json does not exist in CWD" do
+      unless File.exists?("deno.json") do
+        assert {:error, _} = Denox.Deps.remove("nonexistent")
+      end
+    end
+  end
+
+  describe "wrap_file_error/2 — error clause" do
+    test "returns formatted error when config file is unreadable", %{tmp_dir: dir} do
+      config = Path.join(dir, "unreadable.json")
+      File.write!(config, ~s({"imports":{}}))
+      File.chmod!(config, 0o000)
+
+      on_exit(fn -> File.chmod(config, 0o644) end)
+
+      result = Denox.Deps.list(config: config)
+      File.chmod!(config, 0o644)
+
+      assert {:error, msg} = result
+      assert msg =~ "Failed to read"
+    end
+  end
+
+  describe "ensure_vendor_config/1 — error clause" do
+    test "returns error when config has invalid JSON", %{tmp_dir: dir} do
+      config = Path.join(dir, "invalid.json")
+      File.write!(config, "not valid json")
+
+      # install/1 calls find_deno → OK, check_config → OK, ensure_vendor_config → fails
+      assert {:error, msg} = Denox.Deps.install(config: config)
+      assert msg =~ "Failed to update"
+    end
+  end
+
+  describe "remove_from_config/2 — success path" do
+    test "removes import from config and calls install", %{tmp_dir: dir} do
+      config = Path.join(dir, "deno.json")
+      write_json(config, %{"imports" => %{"testpkg" => "npm:testpkg@1.0"}})
+
+      # remove_from_config succeeds (lines 248-250), then install(opts) is called (line 119)
+      # install may succeed or fail depending on deno, but the above lines are covered
+      _result = Denox.Deps.remove("testpkg", config: config)
+
+      # Verify the import was removed from the config file
+      {:ok, content} = File.read(config)
+      assert content =~ ~s("imports")
+      refute content =~ "testpkg"
     end
   end
 end
