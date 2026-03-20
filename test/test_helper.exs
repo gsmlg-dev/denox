@@ -1,1 +1,1 @@
-ExUnit.start(exclude: [:cdn, :deno])
+ExUnit.start(exclude: [:cdn, :deno, :network])
