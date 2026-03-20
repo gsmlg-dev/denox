@@ -4,6 +4,7 @@ defmodule Mix.Tasks.Denox.Cli.Install do
   Downloads the Deno CLI binary for the current platform.
 
       $ mix denox.cli.install
+      $ mix denox.cli.install --force   # reinstall even if already present
 
   The version is read from config:
 
@@ -15,8 +16,10 @@ defmodule Mix.Tasks.Denox.Cli.Install do
   use Mix.Task
 
   @impl true
-  def run(_args) do
+  def run(args) do
     Mix.Task.run("app.config")
+
+    force = "--force" in args
 
     version = Denox.CLI.configured_version()
 
@@ -30,7 +33,7 @@ defmodule Mix.Tasks.Denox.Cli.Install do
       """)
     end
 
-    if Denox.CLI.installed?() do
+    if Denox.CLI.installed?() and not force do
       Mix.shell().info("Deno #{version} is already installed.")
     else
       case Denox.CLI.install() do
