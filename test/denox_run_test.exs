@@ -388,13 +388,26 @@ defmodule DenoxRunTest do
       assert line == "ok"
     end
 
-    test "no permissions", %{tmp_dir: dir} do
+    test "no permissions (nil)", %{tmp_dir: dir} do
       script = write_script(dir, "ok2.ts", ~s[console.log("ok");])
 
       {:ok, pid} =
         Denox.Run.start_link(
           file: script,
           permissions: nil
+        )
+
+      {:ok, line} = Denox.Run.recv(pid, timeout: 5000)
+      assert line == "ok"
+    end
+
+    test "permissions :none", %{tmp_dir: dir} do
+      script = write_script(dir, "ok_none.ts", ~s[console.log("ok");])
+
+      {:ok, pid} =
+        Denox.Run.start_link(
+          file: script,
+          permissions: :none
         )
 
       {:ok, line} = Denox.Run.recv(pid, timeout: 5000)
@@ -453,6 +466,15 @@ defmodule DenoxRunTest do
     end
   end
 
+  describe "unknown call" do
+    test "returns error for unrecognized GenServer call", %{tmp_dir: dir} do
+      script = write_script(dir, "long2.ts", "await new Promise(r => setTimeout(r, 30000));")
+      {:ok, pid} = Denox.Run.start_link(file: script, permissions: :all)
+      assert {:error, {:unknown_call, :bogus_message}} = GenServer.call(pid, :bogus_message)
+      Denox.Run.stop(pid)
+    end
+  end
+
   describe "start_link/1 error paths" do
     test "runtime exits on nonexistent file load failure", %{tmp_dir: _dir} do
       # A nonexistent file — NIF starts the runtime but module load fails.
@@ -466,6 +488,18 @@ defmodule DenoxRunTest do
       Denox.Run.subscribe(pid)
 
       # Runtime should exit quickly after failing to load the module
+      assert_receive {:denox_run_exit, ^pid, _status}, 5000
+    end
+
+    test "file:// prefix is passed as-is to the runtime" do
+      # file:// prefix specifier (resolve_specifier passthrough)
+      {:ok, pid} =
+        Denox.Run.start_link(
+          file: "file:///nonexistent/script.ts",
+          permissions: :all
+        )
+
+      Denox.Run.subscribe(pid)
       assert_receive {:denox_run_exit, ^pid, _status}, 5000
     end
   end
