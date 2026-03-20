@@ -20,20 +20,19 @@ defmodule Denox.CLI do
   @spec bin_path() :: {:ok, String.t()} | {:error, term()}
   def bin_path do
     case configured_version() do
-      nil ->
-        {:error, :not_configured}
+      nil -> {:error, :not_configured}
+      version -> fetch_or_install(cache_path(version))
+    end
+  end
 
-      version ->
-        path = cache_path(version)
-
-        if File.exists?(path) do
-          {:ok, path}
-        else
-          case install() do
-            :ok -> {:ok, path}
-            {:error, _} = error -> error
-          end
-        end
+  defp fetch_or_install(path) do
+    if File.exists?(path) do
+      {:ok, path}
+    else
+      case install() do
+        :ok -> {:ok, path}
+        {:error, _} = error -> error
+      end
     end
   end
 

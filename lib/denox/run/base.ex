@@ -23,6 +23,7 @@ defmodule Denox.Run.Base do
   defmacro __using__(opts) do
     backend_type = Keyword.fetch!(opts, :backend)
 
+    # credo:disable-for-next-line Credo.Check.Refactor.LongQuoteBlocks
     quote location: :keep do
       @behaviour Denox.Run.Base
 
