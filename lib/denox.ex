@@ -108,7 +108,7 @@ defmodule Denox do
   """
   @spec eval(runtime(), String.t()) :: {:ok, String.t()} | {:error, String.t()}
   def eval(rt, code) do
-    telemetry_span(:eval, fn -> Native.eval(rt, code, false) end)
+    Denox.Telemetry.span(:eval, fn -> Native.eval(rt, code, false) end)
   end
 
   @doc """
@@ -121,7 +121,7 @@ defmodule Denox do
   """
   @spec eval_ts(runtime(), String.t()) :: {:ok, String.t()} | {:error, String.t()}
   def eval_ts(rt, code) do
-    telemetry_span(:eval_ts, fn -> Native.eval(rt, code, true) end)
+    Denox.Telemetry.span(:eval_ts, fn -> Native.eval(rt, code, true) end)
   end
 
   @doc """
@@ -176,7 +176,7 @@ defmodule Denox do
   @spec eval_async(runtime(), String.t()) :: Task.t()
   def eval_async(rt, code) do
     Task.async(fn ->
-      telemetry_span(:eval_async, fn -> Native.eval_async(rt, code, false) end)
+      Denox.Telemetry.span(:eval_async, fn -> Native.eval_async(rt, code, false) end)
     end)
   end
 
@@ -191,7 +191,7 @@ defmodule Denox do
   @spec eval_ts_async(runtime(), String.t()) :: Task.t()
   def eval_ts_async(rt, code) do
     Task.async(fn ->
-      telemetry_span(:eval_ts_async, fn -> Native.eval_async(rt, code, true) end)
+      Denox.Telemetry.span(:eval_ts_async, fn -> Native.eval_async(rt, code, true) end)
     end)
   end
 
@@ -204,7 +204,7 @@ defmodule Denox do
   """
   @spec eval_module(runtime(), String.t()) :: {:ok, String.t()} | {:error, String.t()}
   def eval_module(rt, path) do
-    telemetry_span(:eval_module, fn -> Native.eval_module(rt, path) end)
+    Denox.Telemetry.span(:eval_module, fn -> Native.eval_module(rt, path) end)
   end
 
   # --- File evaluation ---
@@ -221,7 +221,7 @@ defmodule Denox do
   def eval_file(rt, path, opts \\ []) do
     transpile = Keyword.get(opts, :transpile, ts_extension?(path))
 
-    telemetry_span(:eval_file, fn ->
+    Denox.Telemetry.span(:eval_file, fn ->
       case File.read(path) do
         {:ok, code} -> Native.eval(rt, code, transpile)
         {:error, reason} -> {:error, "Failed to read #{path}: #{reason}"}
@@ -379,13 +379,13 @@ defmodule Denox do
 
   defp do_eval_async_decode(rt, code) do
     with {:ok, json} <-
-           telemetry_span(:eval_async_decode, fn -> Native.eval_async(rt, code, false) end),
+           Denox.Telemetry.span(:eval_async_decode, fn -> Native.eval_async(rt, code, false) end),
          do: Denox.JSON.decode(json)
   end
 
   defp do_eval_ts_async_decode(rt, code) do
     with {:ok, json} <-
-           telemetry_span(:eval_ts_async_decode, fn -> Native.eval_async(rt, code, true) end),
+           Denox.Telemetry.span(:eval_ts_async_decode, fn -> Native.eval_async(rt, code, true) end),
          do: Denox.JSON.decode(json)
   end
 
@@ -426,39 +426,5 @@ defmodule Denox do
   defp ts_extension?(path) do
     ext = Path.extname(path)
     ext in [".ts", ".tsx", ".mts", ".cts"]
-  end
-
-  defp telemetry_span(type, fun) do
-    start_time = System.monotonic_time()
-
-    :telemetry.execute(
-      [:denox, :eval, :start],
-      %{system_time: System.system_time()},
-      %{type: type}
-    )
-
-    case fun.() do
-      {:ok, result} ->
-        duration = System.monotonic_time() - start_time
-
-        :telemetry.execute(
-          [:denox, :eval, :stop],
-          %{duration: duration},
-          %{type: type}
-        )
-
-        {:ok, result}
-
-      {:error, reason} = error ->
-        duration = System.monotonic_time() - start_time
-
-        :telemetry.execute(
-          [:denox, :eval, :exception],
-          %{duration: duration},
-          %{type: type, kind: :error, reason: reason}
-        )
-
-        error
-    end
   end
 end

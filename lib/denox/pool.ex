@@ -202,12 +202,17 @@ defmodule Denox.Pool do
 
   def handle_call({:eval_async, code}, _from, state) do
     {rt, state} = next_runtime(state)
-    {:reply, Denox.Native.eval_async(rt, code, false), state}
+
+    {:reply,
+     Denox.Telemetry.span(:eval_async, fn -> Denox.Native.eval_async(rt, code, false) end), state}
   end
 
   def handle_call({:eval_ts_async, code}, _from, state) do
     {rt, state} = next_runtime(state)
-    {:reply, Denox.Native.eval_async(rt, code, true), state}
+
+    {:reply,
+     Denox.Telemetry.span(:eval_ts_async, fn -> Denox.Native.eval_async(rt, code, true) end),
+     state}
   end
 
   def handle_call({:exec, code}, _from, state) do
@@ -229,7 +234,8 @@ defmodule Denox.Pool do
     {rt, state} = next_runtime(state)
     args_json = Denox.JSON.encode!(args)
     code = "export default await ((args) => #{func_name}(...args))(#{args_json})"
-    {:reply, Denox.Native.eval_async(rt, code, false), state}
+    result = Denox.Telemetry.span(:call_async, fn -> Denox.Native.eval_async(rt, code, false) end)
+    {:reply, result, state}
   end
 
   def handle_call({:eval_decode, code}, _from, state) do
@@ -251,21 +257,32 @@ defmodule Denox.Pool do
     {rt, state} = next_runtime(state)
     args_json = Denox.JSON.encode!(args)
     code = "export default await ((args) => #{func_name}(...args))(#{args_json})"
-    result = Denox.Native.eval_async(rt, code, false)
+
+    result =
+      Denox.Telemetry.span(:call_async_decode, fn -> Denox.Native.eval_async(rt, code, false) end)
+
     decoded = with {:ok, json} <- result, do: Denox.JSON.decode(json)
     {:reply, decoded, state}
   end
 
   def handle_call({:eval_async_decode, code}, _from, state) do
     {rt, state} = next_runtime(state)
-    result = Denox.Native.eval_async(rt, code, false)
+
+    result =
+      Denox.Telemetry.span(:eval_async_decode, fn -> Denox.Native.eval_async(rt, code, false) end)
+
     decoded = with {:ok, json} <- result, do: Denox.JSON.decode(json)
     {:reply, decoded, state}
   end
 
   def handle_call({:eval_ts_async_decode, code}, _from, state) do
     {rt, state} = next_runtime(state)
-    result = Denox.Native.eval_async(rt, code, true)
+
+    result =
+      Denox.Telemetry.span(:eval_ts_async_decode, fn ->
+        Denox.Native.eval_async(rt, code, true)
+      end)
+
     decoded = with {:ok, json} <- result, do: Denox.JSON.decode(json)
     {:reply, decoded, state}
   end
