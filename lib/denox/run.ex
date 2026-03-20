@@ -55,7 +55,7 @@ defmodule Denox.Run do
     permissions = Keyword.get(opts, :permissions)
     env = Keyword.get(opts, :env, %{})
     args = Keyword.get(opts, :args, [])
-    buffer_size = Keyword.get(opts, :buffer_size, 0)
+    buffer_size = opts |> Keyword.get(:buffer_size, 0) |> max(0) |> min(100_000)
 
     permissions_json = build_permissions_json(permissions)
 
