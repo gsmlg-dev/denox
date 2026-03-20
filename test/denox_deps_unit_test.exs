@@ -98,6 +98,43 @@ defmodule DenoxDepsUnitTest do
     end
   end
 
+  describe "add/3 — error paths" do
+    test "returns error when config has invalid JSON", %{tmp_dir: dir} do
+      config = Path.join(dir, "deno.json")
+      File.write!(config, "not json")
+
+      # find_deno succeeds (system deno on PATH), ensure_config skips (file exists),
+      # add_to_config fails on JSON decode → {:error, "Failed to update..."}
+      assert {:error, msg} = Denox.Deps.add("zod", "npm:zod@^3.22", config: config)
+      assert msg =~ "Failed to update"
+    end
+
+    test "returns error when config path is in non-existent directory" do
+      # find_deno succeeds, ensure_config fails writing to nonexistent dir
+      assert {:error, msg} =
+               Denox.Deps.add("zod", "npm:zod@^3.22", config: "/nonexistent_deps_dir/deno.json")
+
+      assert is_binary(msg)
+    end
+  end
+
+  describe "remove/2 — error paths" do
+    test "returns error when config has invalid JSON", %{tmp_dir: dir} do
+      config = Path.join(dir, "deno.json")
+      File.write!(config, "not json")
+
+      # find_deno succeeds, check_config passes (file exists),
+      # remove_from_config fails JSON decode → {:error, "Failed to update..."}
+      assert {:error, msg} = Denox.Deps.remove("zod", config: config)
+      assert msg =~ "Failed to update"
+    end
+
+    test "returns error when config does not exist" do
+      assert {:error, msg} = Denox.Deps.remove("zod", config: "/nonexistent/deno.json")
+      assert msg =~ "not found"
+    end
+  end
+
   describe "check/1 — default args" do
     test "returns error when called with no args and deno.json does not exist" do
       # Tests the 0-arg default clause; assumes "deno.json" doesn't exist in CWD
