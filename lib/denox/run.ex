@@ -152,8 +152,6 @@ defmodule Denox.Run do
     end
   end
 
-  defp resolve_specifier(nil), do: nil
-
   defp resolve_specifier(spec) do
     cond do
       String.starts_with?(spec, ["npm:", "jsr:", "http://", "https://", "file://"]) -> spec
