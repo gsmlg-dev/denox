@@ -58,7 +58,37 @@ defmodule DenoxMixTasksTest do
   end
 
   describe "mix denox.install" do
-    test "raises when deno.json does not exist and Deno CLI is not configured" do
+    test "raises when config file does not exist" do
+      Mix.Task.reenable("denox.install")
+
+      # check_config fails when config doesn't exist → Deps.install returns error → Mix.raise
+      assert_raise Mix.Error, fn ->
+        Mix.Task.run("denox.install", ["--config", "/nonexistent_install_dir/deno.json"])
+      end
+    end
+  end
+
+  describe "mix denox.bundle" do
+    test "raises when called with wrong number of arguments" do
+      Mix.Task.reenable("denox.bundle")
+
+      assert_raise Mix.Error, ~r/Usage: mix denox.bundle/, fn ->
+        Mix.Task.run("denox.bundle", [])
+      end
+    end
+
+    test "raises when called with only one argument" do
+      Mix.Task.reenable("denox.bundle")
+
+      assert_raise Mix.Error, ~r/Usage: mix denox.bundle/, fn ->
+        Mix.Task.run("denox.bundle", ["npm:zod@3.22"])
+      end
+    end
+  end
+
+  describe "mix denox.cli.install" do
+    test "raises when no version is configured" do
+      Mix.Task.reenable("denox.cli.install")
       original = Application.get_env(:denox, :cli)
 
       on_exit(fn ->
@@ -69,12 +99,8 @@ defmodule DenoxMixTasksTest do
 
       Application.delete_env(:denox, :cli)
 
-      # Without Deno CLI configured, install fails finding deno
-      # (find_deno fails → install returns error → Mix.raise)
-      unless System.find_executable("deno") do
-        assert_raise Mix.Error, fn ->
-          Mix.Task.run("denox.install", ["--config", "/nonexistent/deno.json"])
-        end
+      assert_raise Mix.Error, ~r/No Deno CLI version configured/, fn ->
+        Mix.Task.run("denox.cli.install", [])
       end
     end
   end
