@@ -156,4 +156,31 @@ defmodule DenoxAsyncTest do
                Denox.call_async_decode(rt, "fetchUser", ["Alice"]) |> Task.await()
     end
   end
+
+  describe "eval_async_decode/2" do
+    test "evaluates and decodes JSON result", %{rt: rt} do
+      code = "export default {answer: 42, nested: {ok: true}}"
+      task = Denox.eval_async_decode(rt, code)
+      assert {:ok, %{"answer" => 42, "nested" => %{"ok" => true}}} = Task.await(task)
+    end
+
+    test "returns error for failing code", %{rt: rt} do
+      code = "throw new Error('async decode fail')"
+      task = Denox.eval_async_decode(rt, code)
+      assert {:error, _} = Task.await(task)
+    end
+  end
+
+  describe "eval_ts_async_decode/2" do
+    test "evaluates TypeScript and decodes result", %{rt: rt} do
+      code = """
+      interface Data { x: number; y: string }
+      const d: Data = { x: 10, y: "hello" };
+      export default d;
+      """
+
+      task = Denox.eval_ts_async_decode(rt, code)
+      assert {:ok, %{"x" => 10, "y" => "hello"}} = Task.await(task)
+    end
+  end
 end
