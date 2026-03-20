@@ -148,13 +148,12 @@ defmodule Denox.Run.Base do
       end
 
       @impl true
-      def handle_info({:DOWN, ref, :process, pid, _reason}, state) do
-        # Remove from subscribers (monitor was set without storing ref)
-        subscribers = List.delete(state.subscribers, pid)
+      def handle_info({:DOWN, ref, :process, _pid, _reason}, state) do
+        # Remove subscriber with this monitor ref
+        subscribers = Enum.reject(state.subscribers, fn {_p, sref} -> sref == ref end)
 
-        # Remove any recv_waiters from this pid (monitor ref stored in waiter tuple)
-        waiters =
-          :queue.filter(fn {_from, wref} -> wref != ref end, state.recv_waiters)
+        # Remove any recv_waiters with this monitor ref
+        waiters = :queue.filter(fn {_from, wref} -> wref != ref end, state.recv_waiters)
 
         {:noreply, %{state | subscribers: subscribers, recv_waiters: waiters}}
       end
@@ -181,7 +180,7 @@ defmodule Denox.Run.Base do
           %{line_bytes: byte_size(line), backend: @backend_type}
         )
 
-        for pid <- state.subscribers do
+        for {pid, _ref} <- state.subscribers do
           Kernel.send(pid, {:denox_run_stdout, self(), line})
         end
 
@@ -200,7 +199,7 @@ defmodule Denox.Run.Base do
       def handle_exit(status, state) do
         state = %{state | exit_status: status}
 
-        for pid <- state.subscribers do
+        for {pid, _ref} <- state.subscribers do
           Kernel.send(pid, {:denox_run_exit, self(), status})
         end
 
@@ -267,12 +266,14 @@ defmodule Denox.Run.Base do
   end
 
   def __handle_call__(_module, {:subscribe, pid}, _from, state) do
-    Process.monitor(pid)
-    {:reply, :ok, %{state | subscribers: [pid | state.subscribers]}}
+    ref = Process.monitor(pid)
+    {:reply, :ok, %{state | subscribers: [{pid, ref} | state.subscribers]}}
   end
 
   def __handle_call__(_module, {:unsubscribe, pid}, _from, state) do
-    {:reply, :ok, %{state | subscribers: List.delete(state.subscribers, pid)}}
+    {removed, kept} = Enum.split_with(state.subscribers, fn {p, _ref} -> p == pid end)
+    Enum.each(removed, fn {_p, ref} -> Process.demonitor(ref, [:flush]) end)
+    {:reply, :ok, %{state | subscribers: kept}}
   end
 
   def __handle_call__(module, :alive?, _from, state) do
