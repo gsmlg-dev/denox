@@ -94,5 +94,12 @@ defmodule DenoxFileTest do
       task = Denox.eval_file_async_decode(rt, path)
       assert {:ok, %{"items" => [1, 2, 3]}} = Task.await(task)
     end
+
+    test "returns error for missing file" do
+      {:ok, rt} = Denox.runtime()
+      task = Denox.eval_file_async_decode(rt, "/nonexistent/file.js")
+      assert {:error, msg} = Task.await(task)
+      assert msg =~ "Failed to read"
+    end
   end
 end

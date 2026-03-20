@@ -162,5 +162,43 @@ defmodule DenoxTest do
       Denox.exec(rt, "function double(n) { return n * 2; }")
       assert {:ok, 10} = Denox.call_decode(rt, "double", [5])
     end
+
+    test "calls function with default empty args" do
+      {:ok, rt} = Denox.runtime()
+      Denox.exec(rt, "globalThis.answer = () => 42")
+      assert {:ok, 42} = Denox.call_decode(rt, "answer")
+    end
+  end
+
+  describe "call/3 default args" do
+    test "calls function with default empty args" do
+      {:ok, rt} = Denox.runtime()
+      Denox.exec(rt, "globalThis.greet = () => 'hi'")
+      assert {:ok, "\"hi\""} = Denox.call(rt, "greet")
+    end
+  end
+
+  describe "await/1" do
+    test "awaits a task with default timeout" do
+      {:ok, rt} = Denox.runtime()
+      task = Denox.eval_async(rt, "export default 123")
+      assert {:ok, "123"} = Denox.await(task)
+    end
+  end
+
+  describe "call_async_decode/3 default args" do
+    test "calls async function with default empty args" do
+      {:ok, rt} = Denox.runtime()
+      Denox.exec(rt, "globalThis.asyncPing = async () => 'pong'")
+      assert {:ok, "pong"} = Task.await(Denox.call_async_decode(rt, "asyncPing"))
+    end
+  end
+
+  describe "call_async/3 default args" do
+    test "calls async function with default empty args" do
+      {:ok, rt} = Denox.runtime()
+      Denox.exec(rt, "globalThis.asyncHi = async () => 'hello'")
+      assert {:ok, "\"hello\""} = Task.await(Denox.call_async(rt, "asyncHi"))
+    end
   end
 end
