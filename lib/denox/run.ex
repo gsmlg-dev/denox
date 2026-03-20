@@ -154,7 +154,9 @@ defmodule Denox.Run do
   end
 
   defp build_permissions_json(:all), do: JSON.encode!(%{"mode" => "allow_all"})
+  # nil and :none both map to deny_all for backward compatibility
   defp build_permissions_json(nil), do: JSON.encode!(%{"mode" => "deny_all"})
+  defp build_permissions_json(:none), do: JSON.encode!(%{"mode" => "deny_all"})
 
   defp build_permissions_json(perms) when is_list(perms) do
     granular =
