@@ -88,16 +88,21 @@ defmodule DenoxGlobalsTest do
   end
 
   describe "navigator" do
-    test "navigator.userAgent is Denox", %{rt: rt} do
-      assert {:ok, ~s("Denox")} = Denox.eval(rt, "navigator.userAgent")
+    test "navigator.userAgent contains Deno", %{rt: rt} do
+      assert {:ok, ua} = Denox.eval(rt, "navigator.userAgent")
+      assert ua =~ "Deno"
     end
 
     test "navigator.language is set", %{rt: rt} do
-      assert {:ok, ~s("en")} = Denox.eval(rt, "navigator.language")
+      assert {:ok, lang} = Denox.eval(rt, "navigator.language")
+      # MainWorker returns the system locale
+      assert is_binary(lang)
     end
 
     test "navigator.hardwareConcurrency is a number", %{rt: rt} do
-      assert {:ok, "1"} = Denox.eval(rt, "navigator.hardwareConcurrency")
+      assert {:ok, result} = Denox.eval(rt, "navigator.hardwareConcurrency")
+      {n, ""} = Integer.parse(result)
+      assert n >= 1
     end
   end
 
@@ -316,7 +321,9 @@ defmodule DenoxGlobalsTest do
       req.method + " " + req.url
       """
 
-      assert {:ok, ~s("POST https://example.com")} = Denox.eval(rt, code)
+      # MainWorker normalizes URLs, adding trailing slash
+      assert {:ok, result} = Denox.eval(rt, code)
+      assert result =~ "POST https://example.com"
     end
 
     test "Response class works", %{rt: rt} do

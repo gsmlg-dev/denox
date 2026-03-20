@@ -20,8 +20,16 @@ defmodule Denox.Native do
 
   def create_snapshot(_setup_code, _transpile), do: :erlang.nif_error(:nif_not_loaded)
 
-  def runtime_new(_base_dir, _sandbox, _cache_dir, _import_map_json, _callback_pid, _snapshot),
-    do: :erlang.nif_error(:nif_not_loaded)
+  def runtime_new(
+        _base_dir,
+        _sandbox,
+        _cache_dir,
+        _import_map_json,
+        _callback_pid,
+        _snapshot,
+        _permissions_json
+      ),
+      do: :erlang.nif_error(:nif_not_loaded)
 
   def eval(_resource, _code, _transpile), do: :erlang.nif_error(:nif_not_loaded)
   def eval_async(_resource, _code, _transpile), do: :erlang.nif_error(:nif_not_loaded)

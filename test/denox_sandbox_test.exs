@@ -52,8 +52,8 @@ defmodule DenoxSandboxTest do
     test "non-sandbox with callbacks has callback op available" do
       handler = spawn(fn -> Process.sleep(:infinity) end)
       {:ok, rt} = Denox.runtime(callback_pid: handler)
-      # The callback op should be registered
-      assert {:ok, "\"function\""} = Denox.eval(rt, "typeof Deno.core.ops.op_elixir_call")
+      # The Denox.callback global should be registered
+      assert {:ok, "\"function\""} = Denox.eval(rt, "typeof Denox.callback")
     end
   end
 end

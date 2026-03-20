@@ -1,7 +1,5 @@
 use anyhow::Error;
-use deno_ast::{
-    EmitOptions, MediaType, ParseParams, SourceMapOption, TranspileModuleOptions, TranspileOptions,
-};
+use deno_ast::{EmitOptions, MediaType, ParseParams, SourceMapOption, TranspileOptions};
 use deno_core::{
     ModuleLoadResponse, ModuleLoader, ModuleSource, ModuleSourceCode, ModuleSpecifier, ModuleType,
     RequestedModuleType, ResolutionKind,
@@ -111,14 +109,15 @@ impl TsModuleLoader {
 
         let transpiled = parsed.transpile(
             &TranspileOptions::default(),
-            &TranspileModuleOptions::default(),
             &EmitOptions {
                 source_map: SourceMapOption::None,
                 ..Default::default()
             },
         )?;
 
-        Ok(transpiled.into_source().text)
+        let source_bytes = transpiled.into_source().source;
+        String::from_utf8(source_bytes)
+            .map_err(|e| anyhow::anyhow!("UTF-8 error: {}", e))
     }
 
     /// Compute a disk cache file path from a URL using a simple hash

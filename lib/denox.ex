@@ -28,7 +28,11 @@ defmodule Denox do
 
   Options:
     - `:base_dir` - base directory for resolving relative module imports
-    - `:sandbox` - if true, disable built-in extensions (fs/net ops) for reduced attack surface
+    - `:sandbox` - (deprecated) if true, deny all permissions. Use `:permissions` instead
+    - `:permissions` - permission mode:
+      - `:all` — allow everything (default)
+      - `:none` — deny everything (same as `sandbox: true`)
+      - keyword list — granular permissions (e.g. `[allow_net: true, allow_read: ["/tmp"]]`)
     - `:cache_dir` - on-disk cache directory for remote module fetches
     - `:import_map` - map of bare specifiers to resolved URLs/paths (e.g. `%{"lodash" => "https://esm.sh/lodash"}`)
     - `:callback_pid` - PID of the process that handles JS→Elixir callbacks (enables `Denox.callback()` in JS)
@@ -50,7 +54,17 @@ defmodule Denox do
         map when is_map(map) -> Denox.JSON.encode!(map)
       end
 
-    Native.runtime_new(base_dir, sandbox, cache_dir, import_map_json, callback_pid, snapshot)
+    permissions_json = build_permissions_json(opts, sandbox)
+
+    Native.runtime_new(
+      base_dir,
+      sandbox,
+      cache_dir,
+      import_map_json,
+      callback_pid,
+      snapshot,
+      permissions_json
+    )
   end
 
   @doc """
@@ -364,6 +378,30 @@ defmodule Denox do
   end
 
   # --- Private ---
+
+  defp build_permissions_json(opts, sandbox) do
+    permissions = Keyword.get(opts, :permissions)
+
+    cond do
+      permissions == :all -> Denox.JSON.encode!(%{mode: "allow_all"})
+      permissions == :none -> Denox.JSON.encode!(%{mode: "deny_all"})
+      is_list(permissions) -> build_granular_permissions_json(permissions)
+      sandbox -> Denox.JSON.encode!(%{mode: "deny_all"})
+      true -> ""
+    end
+  end
+
+  defp build_granular_permissions_json(perms) do
+    base = %{mode: "granular"}
+
+    config =
+      Enum.reduce(perms, base, fn {key, value}, acc ->
+        key_str = Atom.to_string(key)
+        Map.put(acc, key_str, value)
+      end)
+
+    Denox.JSON.encode!(config)
+  end
 
   defp ts_extension?(path) do
     ext = Path.extname(path)
