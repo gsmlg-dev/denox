@@ -34,7 +34,7 @@ Add `denox` to your list of dependencies in `mix.exs`:
 ```elixir
 def deps do
   [
-    {:denox, "~> 0.4"}
+    {:denox, "~> 0.5"}
   ]
 end
 ```
@@ -117,7 +117,7 @@ Denox.Run.send(mcp, Jason.encode!(%{
   params: %{
     protocolVersion: "2024-11-05",
     capabilities: %{},
-    clientInfo: %{name: "denox", version: "0.4.0"}
+    clientInfo: %{name: "denox", version: "0.5.0"}
   }
 }))
 
