@@ -58,9 +58,10 @@ defmodule Denox.MixProject do
       groups_for_modules: [
         Core: [Denox, Denox.CallbackHandler],
         Pool: [Denox.Pool],
-        Runner: [Denox.Run],
+        Runner: [Denox.Run, Denox.CLI.Run],
+        CLI: [Denox.CLI],
         Dependencies: [Denox.Deps, Denox.Npm],
-        Internal: [Denox.Native]
+        Internal: [Denox.Native, Denox.Run.Base]
       ]
     ]
   end
