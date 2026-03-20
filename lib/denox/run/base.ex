@@ -81,9 +81,10 @@ defmodule Denox.Run.Base do
               {:ok, String.t()} | {:error, :timeout | :closed}
       def recv(server, opts \\ []) do
         timeout = Keyword.get(opts, :timeout, 5000)
-        GenServer.call(server, :recv, timeout)
-      catch
-        :exit, {:timeout, _} -> {:error, :timeout}
+        # Add a generous buffer so the GenServer always replies (via its internal
+        # timer) before the outer GenServer.call times out, ensuring stale waiters
+        # are never left in recv_waiters.
+        GenServer.call(server, {:recv, timeout}, timeout + 1000)
       end
 
       @doc "Subscribe the calling process to stdout messages."
@@ -152,10 +153,14 @@ defmodule Denox.Run.Base do
         # Remove subscriber with this monitor ref
         subscribers = Enum.reject(state.subscribers, fn {_p, sref} -> sref == ref end)
 
-        # Remove any recv_waiters with this monitor ref
-        waiters = :queue.filter(fn {_from, wref} -> wref != ref end, state.recv_waiters)
+        # Remove any recv_waiters with this monitor ref (3-tuple: {from, mon_ref, timeout_ref})
+        waiters = :queue.filter(fn {_from, wref, _tref} -> wref != ref end, state.recv_waiters)
 
         {:noreply, %{state | subscribers: subscribers, recv_waiters: waiters}}
+      end
+
+      def handle_info({:recv_timeout, timeout_ref}, state) do
+        Denox.Run.Base.__handle_recv_timeout__(timeout_ref, state)
       end
 
       def handle_info(_msg, state) do
@@ -185,8 +190,8 @@ defmodule Denox.Run.Base do
         end
 
         case :queue.out(state.recv_waiters) do
-          {{:value, {from, ref}}, rest} ->
-            Process.demonitor(ref, [:flush])
+          {{:value, {from, mon_ref, _tref}}, rest} ->
+            Process.demonitor(mon_ref, [:flush])
             GenServer.reply(from, {:ok, line})
             %{state | recv_waiters: rest}
 
@@ -221,8 +226,8 @@ defmodule Denox.Run.Base do
 
       defp drain_waiters(state) do
         case :queue.out(state.recv_waiters) do
-          {{:value, {from, ref}}, rest} ->
-            Process.demonitor(ref, [:flush])
+          {{:value, {from, mon_ref, _tref}}, rest} ->
+            Process.demonitor(mon_ref, [:flush])
             GenServer.reply(from, {:error, :closed})
             drain_waiters(%{state | recv_waiters: rest})
 
@@ -248,7 +253,7 @@ defmodule Denox.Run.Base do
     {:reply, {:error, :closed}, state}
   end
 
-  def __handle_call__(_module, :recv, from, %{stdout_buffer: buffer} = state) do
+  def __handle_call__(_module, {:recv, timeout}, from, %{stdout_buffer: buffer} = state) do
     case :queue.out(buffer) do
       {{:value, line}, rest} ->
         {:reply, {:ok, line}, %{state | stdout_buffer: rest}}
@@ -258,8 +263,11 @@ defmodule Denox.Run.Base do
           {:reply, {:error, :closed}, state}
         else
           {pid, _tag} = from
-          ref = Process.monitor(pid)
-          waiters = :queue.in({from, ref}, state.recv_waiters)
+          mon_ref = Process.monitor(pid)
+          # Use a unique ref so we can cancel the timeout if a line arrives first
+          timeout_ref = make_ref()
+          Process.send_after(self(), {:recv_timeout, timeout_ref}, timeout)
+          waiters = :queue.in({from, mon_ref, timeout_ref}, state.recv_waiters)
           {:noreply, %{state | recv_waiters: waiters}}
         end
     end
@@ -302,5 +310,25 @@ defmodule Denox.Run.Base do
 
   def __handle_call__(_module, msg, _from, state) do
     {:reply, {:error, {:unknown_call, msg}}, state}
+  end
+
+  @doc false
+  def __handle_recv_timeout__(timeout_ref, state) do
+    # Find the waiter with this timeout_ref and reply :timeout, removing it.
+    # If not found, the line already arrived and consumed the waiter — do nothing.
+    waiter_list = :queue.to_list(state.recv_waiters)
+
+    {matching, rest} =
+      Enum.split_with(waiter_list, fn {_from, _mref, tref} -> tref == timeout_ref end)
+
+    case matching do
+      [] ->
+        {:noreply, state}
+
+      [{from, mon_ref, _tref} | _] ->
+        Process.demonitor(mon_ref, [:flush])
+        GenServer.reply(from, {:error, :timeout})
+        {:noreply, %{state | recv_waiters: :queue.from_list(rest)}}
+    end
   end
 end

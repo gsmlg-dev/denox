@@ -1,8 +1,7 @@
 defmodule DenoxRunTest do
   use ExUnit.Case, async: false
 
-  # Run tests require deno CLI.
-  @moduletag :deno
+  # Run tests use the NIF-backed runtime (no external deno CLI required).
   @moduletag :tmp_dir
 
   defp write_script(dir, name, code) do
