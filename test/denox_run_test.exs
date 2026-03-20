@@ -275,6 +275,44 @@ defmodule DenoxRunTest do
       assert {:ok, "line4"} = Denox.Run.recv(pid, timeout: 5000)
       assert {:ok, "line5"} = Denox.Run.recv(pid, timeout: 5000)
     end
+
+    test "recv returns immediately when line is already buffered", %{tmp_dir: dir} do
+      # Subscribe first so the line buffers (no recv waiter) instead of being served to a waiter.
+      # When subscribe receives the message, we know the line is in stdout_buffer.
+      script = write_script(dir, "pre_buffered.ts", ~s[console.log("buffered_line");])
+
+      {:ok, pid} =
+        Denox.Run.start_link(
+          file: script,
+          permissions: :all
+        )
+
+      Denox.Run.subscribe(pid)
+      # Wait until the line arrives and is buffered
+      assert_receive {:denox_run_stdout, ^pid, "buffered_line"}, 5000
+
+      # recv should find the line in the buffer immediately (no blocking)
+      assert {:ok, "buffered_line"} = Denox.Run.recv(pid)
+    end
+
+    test "stale recv_timeout message is silently ignored", %{tmp_dir: dir} do
+      # Send a {:recv_timeout, ref} message with a ref that matches no current waiter.
+      # This simulates the race where a line arrived and served the waiter before the timer fired.
+      script = write_script(dir, "stale_timeout.ts", "await new Promise(() => {})")
+
+      {:ok, pid} =
+        Denox.Run.start_link(
+          file: script,
+          permissions: :all
+        )
+
+      # Send a stale timeout ref directly to the GenServer
+      send(pid, {:recv_timeout, make_ref()})
+
+      # GenServer should still be alive and responsive
+      assert Denox.Run.alive?(pid)
+      Denox.Run.stop(pid)
+    end
   end
 
   describe "send/2 edge cases" do
