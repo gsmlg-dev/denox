@@ -201,6 +201,17 @@ defmodule DenoxPoolTest do
       assert {:error, msg} = Denox.Pool.load_npm(pool, "/nonexistent/bundle.js")
       assert msg =~ "Failed to read bundle"
     end
+
+    @tag :tmp_dir
+    test "returns error when bundle JS throws on exec", %{tmp_dir: dir} do
+      pool = :"test_pool_npm_exec_err_#{:erlang.unique_integer([:positive])}"
+      start_supervised!({Denox.Pool, name: pool, size: 1})
+
+      bundle_path = Path.join(dir, "bad_bundle.js")
+      File.write!(bundle_path, "throw new Error('bundle failed');")
+
+      assert {:error, _msg} = Denox.Pool.load_npm(pool, bundle_path)
+    end
   end
 
   describe "pool round-robin" do
