@@ -158,25 +158,25 @@ defmodule Denox.CLI do
         :exit, reason -> {:error, {:exit, reason}}
       end
 
-    case result do
-      {:ok, {{_, status, _}, headers, _}} when status in [301, 302, 303, 307, 308] ->
-        location =
-          headers
-          |> Enum.find(fn {k, _} -> String.downcase(to_string(k)) == "location" end)
-          |> elem(1)
-          |> to_string()
+    handle_response(result, redirects_left)
+  end
 
-        download(location, redirects_left - 1)
-
-      {:ok, {{_, 200, _}, _, body}} ->
-        {:ok, body}
-
-      {:ok, {{_, status, _}, _, body}} ->
-        {:error, "Download failed (HTTP #{status}): #{body}"}
-
-      {:error, reason} ->
-        {:error, "Download failed: #{inspect(reason)}"}
+  defp handle_response({:ok, {{_, status, _}, headers, _}}, redirects_left)
+       when status in [301, 302, 303, 307, 308] do
+    case Enum.find(headers, fn {k, _} -> String.downcase(to_string(k)) == "location" end) do
+      {_, location} -> download(to_string(location), redirects_left - 1)
+      nil -> {:error, "Redirect (HTTP #{status}) without Location header"}
     end
+  end
+
+  defp handle_response({:ok, {{_, 200, _}, _, body}}, _redirects_left), do: {:ok, body}
+
+  defp handle_response({:ok, {{_, status, _}, _, body}}, _redirects_left) do
+    {:error, "Download failed (HTTP #{status}): #{body}"}
+  end
+
+  defp handle_response({:error, reason}, _redirects_left) do
+    {:error, "Download failed: #{inspect(reason)}"}
   end
 
   defp target_name({os, arch}) do
