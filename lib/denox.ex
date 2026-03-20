@@ -44,6 +44,11 @@ defmodule Denox do
   def runtime(opts \\ []) do
     base_dir = Keyword.get(opts, :base_dir, "")
     sandbox = Keyword.get(opts, :sandbox, false)
+
+    if sandbox do
+      IO.warn("the :sandbox option is deprecated, use permissions: :none instead")
+    end
+
     cache_dir = Keyword.get(opts, :cache_dir, "")
     callback_pid = Keyword.get(opts, :callback_pid)
     snapshot = Keyword.get(opts, :snapshot, <<>>)
