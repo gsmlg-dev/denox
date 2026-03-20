@@ -179,6 +179,9 @@ defmodule Denox.CLI.Run do
   defp build_env(opts) do
     opts
     |> Keyword.get(:env, %{})
-    |> Enum.map(fn {k, v} -> {String.to_charlist(k), String.to_charlist(v)} end)
+    |> Enum.map(fn {k, v} -> {env_to_charlist(k), env_to_charlist(v)} end)
   end
+
+  defp env_to_charlist(value) when is_atom(value), do: Atom.to_charlist(value)
+  defp env_to_charlist(value) when is_binary(value), do: String.to_charlist(value)
 end
