@@ -10,7 +10,8 @@ defmodule DenoxAsyncTest do
 
   describe "eval_async/2 Promises" do
     test "resolves Promise.resolve", %{rt: rt} do
-      assert {:ok, "42"} = Task.await(Denox.eval_async(rt, "export default await Promise.resolve(42)"))
+      assert {:ok, "42"} =
+               Task.await(Denox.eval_async(rt, "export default await Promise.resolve(42)"))
     end
 
     test "rejects Promise.reject", %{rt: rt} do

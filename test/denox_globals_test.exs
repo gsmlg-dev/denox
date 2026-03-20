@@ -330,7 +330,9 @@ defmodule DenoxGlobalsTest do
 
     @tag :network
     test "fetch GET returns status", %{rt: rt} do
-      task = Denox.eval_async(rt, "export default (await fetch('https://httpbin.org/get')).status")
+      task =
+        Denox.eval_async(rt, "export default (await fetch('https://httpbin.org/get')).status")
+
       assert {:ok, "200"} = Task.await(task, 30_000)
     end
 
