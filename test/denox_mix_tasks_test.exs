@@ -198,6 +198,33 @@ defmodule DenoxMixTasksTest do
 
       Mix.Task.run("denox.run", ["--allow-net", "file://#{script}"])
     end
+
+    test "prints stdout output lines from the script", %{tmp_dir: dir} do
+      Mix.Task.reenable("denox.run")
+      script = Path.join(dir, "output.ts")
+      File.write!(script, ~s[console.log("hello from deno");])
+
+      # stdout_loop receives {:eol, line} → IO.puts(line) → covers lines 75-76
+      Mix.Task.run("denox.run", ["file://#{script}"])
+    end
+
+    test "covers -A shorthand flag", %{tmp_dir: dir} do
+      Mix.Task.reenable("denox.run")
+      script = Path.join(dir, "noop5.ts")
+      File.write!(script, "// noop\n")
+
+      # "-A" hits extract_flags line 128-129
+      Mix.Task.run("denox.run", ["-A", "file://#{script}"])
+    end
+
+    test "covers bare specifier (no prefix) passed through to deno", %{tmp_dir: dir} do
+      Mix.Task.reenable("denox.run")
+      # A specifier with no npm:/jsr:/file:// prefix → resolve_specifier line 153-154
+      # deno fails (file doesn't exist) → Mix.raise
+      assert_raise Mix.Error, fn ->
+        Mix.Task.run("denox.run", ["nonexistent_script_xyz_abc.ts"])
+      end
+    end
   end
 
   describe "mix denox.cli.install" do
