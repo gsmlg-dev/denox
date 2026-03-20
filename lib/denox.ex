@@ -325,7 +325,9 @@ defmodule Denox do
   @spec eval_async_decode(runtime(), String.t()) :: Task.t()
   def eval_async_decode(rt, code) do
     Task.async(fn ->
-      with {:ok, json} <- eval_async(rt, code) |> await(:infinity), do: Denox.JSON.decode(json)
+      with {:ok, json} <-
+             telemetry_span(:eval_async_decode, fn -> Native.eval_async(rt, code, false) end),
+           do: Denox.JSON.decode(json)
     end)
   end
 
@@ -337,7 +339,9 @@ defmodule Denox do
   @spec eval_ts_async_decode(runtime(), String.t()) :: Task.t()
   def eval_ts_async_decode(rt, code) do
     Task.async(fn ->
-      with {:ok, json} <- eval_ts_async(rt, code) |> await(:infinity), do: Denox.JSON.decode(json)
+      with {:ok, json} <-
+             telemetry_span(:eval_ts_async_decode, fn -> Native.eval_async(rt, code, true) end),
+           do: Denox.JSON.decode(json)
     end)
   end
 
