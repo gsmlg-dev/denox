@@ -277,6 +277,37 @@ defmodule DenoxRunTest do
   end
 
   describe "telemetry" do
+    test "emits :recv event for each stdout line", %{tmp_dir: dir} do
+      ref = make_ref()
+      test_pid = self()
+
+      :telemetry.attach(
+        "test-run-recv-#{inspect(ref)}",
+        [:denox, :run, :recv],
+        fn _event, measurements, metadata, _ ->
+          send(test_pid, {:telemetry_recv, measurements, metadata})
+        end,
+        nil
+      )
+
+      script = write_script(dir, "telem_recv.ts", ~s[console.log("hello");])
+
+      {:ok, pid} =
+        Denox.Run.start_link(
+          file: script,
+          permissions: :all
+        )
+
+      {:ok, "hello"} = Denox.Run.recv(pid, timeout: 5000)
+
+      assert_receive {:telemetry_recv, %{system_time: _}, %{line_bytes: bytes, backend: :nif}},
+                     1000
+
+      assert bytes == byte_size("hello")
+
+      :telemetry.detach("test-run-recv-#{inspect(ref)}")
+    end
+
     test "emits :start and :stop events", %{tmp_dir: dir} do
       ref = make_ref()
       test_pid = self()
