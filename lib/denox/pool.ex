@@ -39,6 +39,7 @@ defmodule Denox.Pool do
     GenServer.start_link(__MODULE__, opts, name: name)
   end
 
+  @spec child_spec(keyword()) :: Supervisor.child_spec()
   def child_spec(opts) do
     %{
       id: Keyword.get(opts, :name, __MODULE__),

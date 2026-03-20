@@ -44,6 +44,7 @@ defmodule Denox.CallbackHandler do
     - `:callbacks` - map of callback name (string) to function (required).
       Each function receives a list of decoded JSON arguments.
   """
+  @spec start_link(keyword()) :: GenServer.on_start()
   def start_link(opts) do
     callbacks = Keyword.fetch!(opts, :callbacks)
     GenServer.start_link(__MODULE__, %{callbacks: callbacks})
