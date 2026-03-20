@@ -71,6 +71,16 @@ defmodule DenoxPoolTest do
       assert {:ok, "10"} = Denox.Pool.call(pool, "double", [5])
     end
 
+    test "eval_async_decode evaluates and decodes", %{pool: pool} do
+      assert {:ok, %{"x" => 1}} =
+               Denox.Pool.eval_async_decode(pool, "export default {x: 1}") |> Task.await()
+    end
+
+    test "eval_ts_async_decode transpiles and decodes", %{pool: pool} do
+      code = "interface R { v: number }; const r: R = {v: 7}; export default r"
+      assert {:ok, %{"v" => 7}} = Denox.Pool.eval_ts_async_decode(pool, code) |> Task.await()
+    end
+
     test "eval_ts_async transpiles and resolves", %{pool: pool} do
       code = "const x: number = 77; export default await Promise.resolve(x)"
 
@@ -94,6 +104,16 @@ defmodule DenoxPoolTest do
       path = Path.join(dir, "pool_test.js")
       File.write!(path, "1 + 2 + 3")
       assert {:ok, "6"} = Denox.Pool.eval_file(pool, path)
+    end
+
+    @tag :tmp_dir
+    test "eval_file_decode evaluates and decodes result", %{tmp_dir: dir} do
+      pool = :"test_pool_file_decode_#{:erlang.unique_integer([:positive])}"
+      start_supervised!({Denox.Pool, name: pool, size: 1})
+
+      path = Path.join(dir, "data.js")
+      File.write!(path, "({answer: 42})")
+      assert {:ok, %{"answer" => 42}} = Denox.Pool.eval_file_decode(pool, path)
     end
   end
 

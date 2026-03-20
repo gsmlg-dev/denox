@@ -119,10 +119,28 @@ defmodule Denox.Pool do
     Task.async(fn -> GenServer.call(pool, {:call_async_decode, func_name, args}, :infinity) end)
   end
 
+  @doc "Evaluate JavaScript asynchronously and decode JSON result, returning a Task."
+  @spec eval_async_decode(pool(), String.t()) :: Task.t()
+  def eval_async_decode(pool, code) do
+    Task.async(fn -> GenServer.call(pool, {:eval_async_decode, code}, :infinity) end)
+  end
+
+  @doc "Evaluate TypeScript asynchronously and decode JSON result, returning a Task."
+  @spec eval_ts_async_decode(pool(), String.t()) :: Task.t()
+  def eval_ts_async_decode(pool, code) do
+    Task.async(fn -> GenServer.call(pool, {:eval_ts_async_decode, code}, :infinity) end)
+  end
+
   @doc "Read and evaluate a JavaScript or TypeScript file."
   @spec eval_file(pool(), String.t(), keyword()) :: {:ok, String.t()} | {:error, String.t()}
   def eval_file(pool, path, opts \\ []) do
     GenServer.call(pool, {:eval_file, path, opts}, :infinity)
+  end
+
+  @doc "Read and evaluate a JavaScript or TypeScript file and decode the JSON result."
+  @spec eval_file_decode(pool(), String.t(), keyword()) :: {:ok, term()} | {:error, term()}
+  def eval_file_decode(pool, path, opts \\ []) do
+    GenServer.call(pool, {:eval_file_decode, path, opts}, :infinity)
   end
 
   @doc "Load a bundled JS file into all runtimes in the pool."
@@ -238,9 +256,28 @@ defmodule Denox.Pool do
     {:reply, decoded, state}
   end
 
+  def handle_call({:eval_async_decode, code}, _from, state) do
+    {rt, state} = next_runtime(state)
+    result = Denox.Native.eval_async(rt, code, false)
+    decoded = with {:ok, json} <- result, do: Denox.JSON.decode(json)
+    {:reply, decoded, state}
+  end
+
+  def handle_call({:eval_ts_async_decode, code}, _from, state) do
+    {rt, state} = next_runtime(state)
+    result = Denox.Native.eval_async(rt, code, true)
+    decoded = with {:ok, json} <- result, do: Denox.JSON.decode(json)
+    {:reply, decoded, state}
+  end
+
   def handle_call({:eval_file, path, opts}, _from, state) do
     {rt, state} = next_runtime(state)
     {:reply, Denox.eval_file(rt, path, opts), state}
+  end
+
+  def handle_call({:eval_file_decode, path, opts}, _from, state) do
+    {rt, state} = next_runtime(state)
+    {:reply, Denox.eval_file_decode(rt, path, opts), state}
   end
 
   def handle_call({:load_npm, bundle_path}, _from, state) do
