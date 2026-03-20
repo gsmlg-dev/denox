@@ -265,6 +265,26 @@ defmodule DenoxMixTasksTest do
       end
     end
 
+    test "raises when CLI install fails (non-existent version)" do
+      Mix.Task.reenable("denox.cli.install")
+      version = "999.999.999-nonexistent"
+      original = Application.get_env(:denox, :cli)
+
+      Application.put_env(:denox, :cli, version: version)
+
+      on_exit(fn ->
+        if original,
+          do: Application.put_env(:denox, :cli, original),
+          else: Application.delete_env(:denox, :cli)
+      end)
+
+      # binary doesn't exist → installed?() returns false → install() is called
+      # install() tries to download from GitHub → fails → Mix.raise (line 41 covered)
+      assert_raise Mix.Error, fn ->
+        Mix.Task.run("denox.cli.install", [])
+      end
+    end
+
     test "prints 'already installed' when binary exists and not forced" do
       Mix.Task.reenable("denox.cli.install")
       version = "55.55.55"
