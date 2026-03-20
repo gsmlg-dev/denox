@@ -202,11 +202,13 @@ defmodule DenoxRunTest do
           permissions: :all
         )
 
+      Denox.Run.subscribe(pid)
+
       # Drain the output line
       {:ok, "bye"} = Denox.Run.recv(pid, timeout: 5000)
 
-      # Wait for the process to detect exit
-      Process.sleep(500)
+      # Wait for exit notification before checking closed state
+      assert_receive {:denox_run_exit, ^pid, _status}, 5000
 
       assert {:error, :closed} = Denox.Run.recv(pid, timeout: 1000)
     end
@@ -224,9 +226,6 @@ defmodule DenoxRunTest do
           file: script,
           permissions: :all
         )
-
-      # Wait a bit for lines to buffer
-      Process.sleep(500)
 
       assert {:ok, "line1"} = Denox.Run.recv(pid, timeout: 5000)
       assert {:ok, "line2"} = Denox.Run.recv(pid, timeout: 5000)
