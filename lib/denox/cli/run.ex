@@ -1,41 +1,24 @@
-defmodule Denox.Run do
+defmodule Denox.CLI.Run do
   @moduledoc """
-  Run Deno packages as managed subprocesses.
+  Run Deno programs as managed subprocesses using the bundled CLI.
 
-  Wraps the `deno run` CLI in a GenServer with bidirectional stdio,
-  enabling Elixir applications to run full Deno programs (including
-  MCP servers, CLI tools, etc.) with OTP supervision.
+  Same API as `Denox.Run`, but uses the bundled binary from `Denox.CLI`
+  instead of the NIF runtime. Primarily useful for testing or when
+  full CLI features (deno fmt, deno lint) are needed.
 
   ## Examples
 
-      # Run an MCP server
-      {:ok, pid} = Denox.Run.start_link(
+      {:ok, pid} = Denox.CLI.Run.start_link(
         package: "@modelcontextprotocol/server-github",
         permissions: :all,
         env: %{"GITHUB_PERSONAL_ACCESS_TOKEN" => token}
       )
 
-      # Send JSON-RPC via stdin
-      :ok = Denox.Run.send(pid, ~s|{"jsonrpc":"2.0","method":"initialize","id":1}|)
-
-      # Receive response from stdout
-      {:ok, line} = Denox.Run.recv(pid, timeout: 5000)
-
-      # Or subscribe to all output
-      Denox.Run.subscribe(pid)
-      # => receives {:denox_run_stdout, ^pid, line} messages
-
-      # Run a local script
-      {:ok, pid} = Denox.Run.start_link(
-        file: "scripts/server.ts",
-        permissions: :all
-      )
-
-      # Stop the process
-      Denox.Run.stop(pid)
+      :ok = Denox.CLI.Run.send(pid, data)
+      {:ok, line} = Denox.CLI.Run.recv(pid, timeout: 5000)
   """
 
-  use Denox.Run.Base, backend: :subprocess
+  use Denox.Run.Base, backend: :cli
 
   # --- Backend callbacks ---
 
@@ -120,9 +103,13 @@ defmodule Denox.Run do
   # --- Private ---
 
   defp find_deno do
-    case System.find_executable("deno") do
-      nil -> {:error, "deno CLI not found in PATH. Install from https://deno.land"}
-      path -> {:ok, path}
+    case Denox.CLI.bin_path() do
+      {:ok, path} ->
+        {:ok, path}
+
+      {:error, _} ->
+        {:error,
+         "Deno CLI not configured. Add `config :denox, :cli, version: \"2.x.x\"` and run `mix denox.cli.install`"}
     end
   end
 

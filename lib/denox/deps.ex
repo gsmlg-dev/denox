@@ -42,10 +42,10 @@ defmodule Denox.Deps do
   def install(opts \\ []) do
     config = Keyword.get(opts, :config, @deno_json)
 
-    with :ok <- check_deno(),
+    with {:ok, deno_path} <- find_deno(),
          :ok <- check_config(config),
          :ok <- ensure_vendor_config(config) do
-      run_deno_install(config)
+      run_deno_install(deno_path, config)
     end
   end
 
@@ -96,7 +96,7 @@ defmodule Denox.Deps do
   def add(name, specifier, opts \\ []) do
     config = Keyword.get(opts, :config, @deno_json)
 
-    with :ok <- check_deno(),
+    with {:ok, _deno_path} <- find_deno(),
          :ok <- ensure_config(config),
          :ok <- add_to_config(config, name, specifier) do
       install(opts)
@@ -109,7 +109,7 @@ defmodule Denox.Deps do
   def remove(name, opts \\ []) do
     config = Keyword.get(opts, :config, @deno_json)
 
-    with :ok <- check_deno(),
+    with {:ok, _deno_path} <- find_deno(),
          :ok <- check_config(config),
          :ok <- remove_from_config(config, name) do
       install(opts)
@@ -181,10 +181,20 @@ defmodule Denox.Deps do
     end
   end
 
-  defp check_deno do
+  defp find_deno do
     case System.find_executable("deno") do
-      nil -> {:error, "deno CLI not found in PATH. Install from https://deno.land"}
-      _ -> :ok
+      nil ->
+        case Denox.CLI.bin_path() do
+          {:ok, path} ->
+            {:ok, path}
+
+          {:error, _} ->
+            {:error,
+             "deno CLI not found. Either install deno (https://deno.land) or configure Denox.CLI: `config :denox, :cli, version: \"2.x.x\"`"}
+        end
+
+      path ->
+        {:ok, path}
     end
   end
 
@@ -218,10 +228,10 @@ defmodule Denox.Deps do
     end
   end
 
-  defp run_deno_install(config) do
+  defp run_deno_install(deno_path, config) do
     config_dir = config |> Path.expand() |> Path.dirname()
 
-    case System.cmd("deno", ["install"], cd: config_dir, stderr_to_stdout: true) do
+    case System.cmd(deno_path, ["install"], cd: config_dir, stderr_to_stdout: true) do
       {_, 0} -> :ok
       {output, _} -> {:error, "deno install failed: #{output}"}
     end

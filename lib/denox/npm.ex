@@ -40,12 +40,12 @@ defmodule Denox.Npm do
       Denox.Npm.bundle("npm:lodash-es@4.17", "priv/bundles/lodash.js", minify: true)
   """
   def bundle(specifier, output_path, opts \\ []) do
-    with :ok <- check_deno() do
+    with {:ok, deno_path} <- find_deno() do
       File.mkdir_p!(Path.dirname(output_path))
 
       args = build_bundle_args(specifier, output_path, opts)
 
-      case System.cmd("deno", args, stderr_to_stdout: true) do
+      case System.cmd(deno_path, args, stderr_to_stdout: true) do
         {_, 0} -> :ok
         {output, _} -> {:error, "deno bundle failed: #{output}"}
       end
@@ -95,12 +95,12 @@ defmodule Denox.Npm do
   Returns `:ok` or `{:error, message}`.
   """
   def bundle_file(entrypoint, output_path, opts \\ []) do
-    with :ok <- check_deno(),
+    with {:ok, deno_path} <- find_deno(),
          :ok <- check_entrypoint(entrypoint) do
       File.mkdir_p!(Path.dirname(output_path))
       args = build_bundle_args(entrypoint, output_path, opts)
 
-      case System.cmd("deno", args, stderr_to_stdout: true) do
+      case System.cmd(deno_path, args, stderr_to_stdout: true) do
         {_, 0} -> :ok
         {output, _} -> {:error, "deno bundle failed: #{output}"}
       end
@@ -117,10 +117,20 @@ defmodule Denox.Npm do
     end
   end
 
-  defp check_deno do
+  defp find_deno do
     case System.find_executable("deno") do
-      nil -> {:error, "deno CLI not found in PATH. Install from https://deno.land"}
-      _ -> :ok
+      nil ->
+        case Denox.CLI.bin_path() do
+          {:ok, path} ->
+            {:ok, path}
+
+          {:error, _} ->
+            {:error,
+             "deno CLI not found. Either install deno (https://deno.land) or configure Denox.CLI: `config :denox, :cli, version: \"2.x.x\"`"}
+        end
+
+      path ->
+        {:ok, path}
     end
   end
 
@@ -139,13 +149,10 @@ defmodule Denox.Npm do
         platform -> args ++ ["--platform", platform]
       end
 
-    args =
-      if Keyword.get(opts, :minify, false) do
-        args ++ ["--minify"]
-      else
-        args
-      end
-
-    args
+    if Keyword.get(opts, :minify, false) do
+      args ++ ["--minify"]
+    else
+      args
+    end
   end
 end
