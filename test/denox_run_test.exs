@@ -381,24 +381,19 @@ defmodule DenoxRunTest do
   end
 
   describe "start_link/1 error paths" do
-    test "returns error for invalid specifier (nonexistent file)", %{tmp_dir: _dir} do
-      Process.flag(:trap_exit, true)
-      # A nonexistent file path — the NIF should fail to load the module
-      result =
+    test "runtime exits on nonexistent file load failure", %{tmp_dir: _dir} do
+      # A nonexistent file — NIF starts the runtime but module load fails.
+      # The runtime sends an error to stdout and sets alive=false.
+      {:ok, pid} =
         Denox.Run.start_link(
           file: "/nonexistent/path/to/script.ts",
           permissions: :all
         )
 
-      # Either start_link fails immediately or the process exits quickly
-      case result do
-        {:error, _reason} ->
-          :ok
+      Denox.Run.subscribe(pid)
 
-        {:ok, pid} ->
-          # Process may start but exit when module load fails
-          assert_receive {:EXIT, ^pid, _}, 5000
-      end
+      # Runtime should exit quickly after failing to load the module
+      assert_receive {:denox_run_exit, ^pid, _status}, 5000
     end
   end
 end
