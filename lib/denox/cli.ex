@@ -135,8 +135,9 @@ defmodule Denox.CLI do
     Application.ensure_all_started(:inets)
     Application.ensure_all_started(:ssl)
 
-    # Configure SSL with system CA certs
+    # Configure SSL with system CA certs and timeout
     ssl_opts = [
+      timeout: 60_000,
       ssl: [
         verify: :verify_peer,
         cacerts: :public_key.cacerts_get(),
