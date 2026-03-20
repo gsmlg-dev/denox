@@ -28,7 +28,8 @@ defmodule Denox.Pool do
   Options:
     - `:name` - registered name for the pool (required)
     - `:size` - number of runtimes (default: `System.schedulers_online()`)
-    - `:sandbox` - if true, disable built-in extensions in all runtimes
+    - `:permissions` - permission mode for all runtimes (`:all`, `:none`, or keyword list)
+    - `:sandbox` - (deprecated) use `permissions: :none` instead
     - `:base_dir` - base directory for module resolution
     - `:cache_dir` - cache directory for remote modules
   """
@@ -119,7 +120,15 @@ defmodule Denox.Pool do
 
     runtime_opts =
       opts
-      |> Keyword.take([:base_dir, :cache_dir, :sandbox, :import_map, :callback_pid, :snapshot])
+      |> Keyword.take([
+        :base_dir,
+        :cache_dir,
+        :sandbox,
+        :permissions,
+        :import_map,
+        :callback_pid,
+        :snapshot
+      ])
 
     runtimes =
       for _ <- 1..pool_size do
