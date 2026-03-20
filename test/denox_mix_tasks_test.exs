@@ -103,5 +103,28 @@ defmodule DenoxMixTasksTest do
         Mix.Task.run("denox.cli.install", [])
       end
     end
+
+    test "prints 'already installed' when binary exists and not forced" do
+      Mix.Task.reenable("denox.cli.install")
+      version = "55.55.55"
+      original = Application.get_env(:denox, :cli)
+
+      Application.put_env(:denox, :cli, version: version)
+
+      path = Path.join(["_build", "denox_cli-#{version}", "deno"])
+      File.mkdir_p!(Path.dirname(path))
+      File.write!(path, "fake-binary")
+
+      on_exit(fn ->
+        File.rm_rf(Path.dirname(path))
+
+        if original,
+          do: Application.put_env(:denox, :cli, original),
+          else: Application.delete_env(:denox, :cli)
+      end)
+
+      # No error raised — task prints "already installed"
+      Mix.Task.run("denox.cli.install", [])
+    end
   end
 end
