@@ -82,6 +82,32 @@ defmodule Denox.CLI do
     end
   end
 
+  @doc """
+  Find a `deno` executable, preferring the system PATH.
+
+  Tries `System.find_executable("deno")` first, then falls back to
+  the bundled CLI binary via `bin_path/0`. Returns an actionable
+  error message if neither is available.
+  """
+  @spec find_deno() :: {:ok, String.t()} | {:error, String.t()}
+  def find_deno do
+    case System.find_executable("deno") do
+      nil ->
+        case bin_path() do
+          {:ok, path} ->
+            {:ok, path}
+
+          {:error, _} ->
+            {:error,
+             "deno CLI not found. Either install deno (https://deno.land) " <>
+               "or configure Denox.CLI: `config :denox, :cli, version: \"2.x.x\"`"}
+        end
+
+      path ->
+        {:ok, path}
+    end
+  end
+
   # --- Private ---
 
   defp cache_path(version) do

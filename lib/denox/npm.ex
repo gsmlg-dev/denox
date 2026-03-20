@@ -117,22 +117,7 @@ defmodule Denox.Npm do
     end
   end
 
-  defp find_deno do
-    case System.find_executable("deno") do
-      nil ->
-        case Denox.CLI.bin_path() do
-          {:ok, path} ->
-            {:ok, path}
-
-          {:error, _} ->
-            {:error,
-             "deno CLI not found. Either install deno (https://deno.land) or configure Denox.CLI: `config :denox, :cli, version: \"2.x.x\"`"}
-        end
-
-      path ->
-        {:ok, path}
-    end
-  end
+  defp find_deno, do: Denox.CLI.find_deno()
 
   defp build_bundle_args(input, output, opts) do
     args = ["bundle", input, "-o", output]
