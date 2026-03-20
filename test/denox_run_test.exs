@@ -466,6 +466,44 @@ defmodule DenoxRunTest do
     end
   end
 
+  describe "subscriber :DOWN cleanup" do
+    test "removes subscriber when subscriber process dies", %{tmp_dir: dir} do
+      script = write_script(dir, "long_sub.ts", "await new Promise(r => setTimeout(r, 30000));")
+      {:ok, run_pid} = Denox.Run.start_link(file: script, permissions: :all)
+
+      subscriber =
+        spawn(fn ->
+          Denox.Run.subscribe(run_pid)
+
+          receive do
+            :never -> :ok
+          end
+        end)
+
+      Process.sleep(50)
+      Process.exit(subscriber, :kill)
+      Process.sleep(50)
+
+      assert Denox.Run.alive?(run_pid)
+      Denox.Run.stop(run_pid)
+    end
+
+    test "cleans up recv waiter when calling process dies", %{tmp_dir: dir} do
+      script =
+        write_script(dir, "long_recv.ts", "await new Promise(r => setTimeout(r, 30000));")
+
+      {:ok, run_pid} = Denox.Run.start_link(file: script, permissions: :all)
+
+      waiter = spawn(fn -> Denox.Run.recv(run_pid, timeout: 30_000) end)
+      Process.sleep(50)
+      Process.exit(waiter, :kill)
+      Process.sleep(50)
+
+      assert Denox.Run.alive?(run_pid)
+      Denox.Run.stop(run_pid)
+    end
+  end
+
   describe "unknown call" do
     test "returns error for unrecognized GenServer call", %{tmp_dir: dir} do
       script = write_script(dir, "long2.ts", "await new Promise(r => setTimeout(r, 30000));")
