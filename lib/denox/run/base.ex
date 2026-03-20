@@ -295,6 +295,11 @@ defmodule Denox.Run.Base do
     {:reply, {:error, :not_running}, state}
   end
 
+  # Backend without os_pid (e.g., NIF-backed Denox.Run)
+  def __handle_call__(_module, :os_pid, _from, state) do
+    {:reply, {:error, :not_available}, state}
+  end
+
   def __handle_call__(_module, msg, _from, state) do
     {:reply, {:error, {:unknown_call, msg}}, state}
   end
