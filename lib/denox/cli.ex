@@ -48,13 +48,11 @@ defmodule Denox.CLI do
         {:error, :not_configured}
 
       version ->
-        target = detect_target()
-        url = download_url(version, target)
-        dest = cache_path(version)
-
-        Logger.info("Downloading Deno #{version} for #{target}...")
-
-        with {:ok, zip_data} <- download(url),
+        with {:ok, target} <- detect_target(),
+             url = download_url(version, target),
+             dest = cache_path(version),
+             _ = Logger.info("Downloading Deno #{version} for #{target}..."),
+             {:ok, zip_data} <- download(url),
              :ok <- extract_and_install(zip_data, dest) do
           Logger.info("Deno #{version} installed to #{dest}")
           :ok
@@ -91,16 +89,17 @@ defmodule Denox.CLI do
   end
 
   defp detect_target do
-    os = detect_os()
-    arch = detect_arch()
-    {os, arch}
+    with {:ok, os} <- detect_os(),
+         {:ok, arch} <- detect_arch() do
+      {:ok, {os, arch}}
+    end
   end
 
   defp detect_os do
     case :os.type() do
-      {:unix, :darwin} -> :macos
-      {:unix, :linux} -> :linux
-      {_, os} -> raise "Unsupported OS: #{os}"
+      {:unix, :darwin} -> {:ok, :macos}
+      {:unix, :linux} -> {:ok, :linux}
+      {_, os} -> {:error, "Unsupported OS: #{os}"}
     end
   end
 
@@ -110,9 +109,9 @@ defmodule Denox.CLI do
       |> to_string()
 
     cond do
-      arch =~ "x86_64" or arch =~ "amd64" -> :x86_64
-      arch =~ "aarch64" or arch =~ "arm64" -> :aarch64
-      true -> raise "Unsupported architecture: #{arch}"
+      arch =~ "x86_64" or arch =~ "amd64" -> {:ok, :x86_64}
+      arch =~ "aarch64" or arch =~ "arm64" -> {:ok, :aarch64}
+      true -> {:error, "Unsupported architecture: #{arch}"}
     end
   end
 
