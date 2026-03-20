@@ -41,6 +41,18 @@ defmodule DenoxPoolTest do
       assert {:ok, %{"a" => 1}} = Denox.Pool.eval_decode(pool, "({a: 1})")
     end
 
+    test "eval_ts_decode transpiles and decodes", %{pool: pool} do
+      assert {:ok, %{"x" => 42}} =
+               Denox.Pool.eval_ts_decode(pool, "const x: number = 42; ({x})")
+    end
+
+    test "call_decode invokes function and decodes result" do
+      pool = :"test_pool_cd_#{:erlang.unique_integer([:positive])}"
+      start_supervised!({Denox.Pool, name: pool, size: 1})
+      Denox.Pool.exec(pool, "globalThis.getObj = () => ({status: 'ok', count: 3})")
+      assert {:ok, %{"status" => "ok", "count" => 3}} = Denox.Pool.call_decode(pool, "getObj")
+    end
+
     test "call invokes function" do
       pool = :"test_pool_call_#{:erlang.unique_integer([:positive])}"
       start_supervised!({Denox.Pool, name: pool, size: 1})

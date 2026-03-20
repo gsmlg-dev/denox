@@ -95,6 +95,18 @@ defmodule Denox.Pool do
     GenServer.call(pool, {:eval_decode, code}, :infinity)
   end
 
+  @doc "Evaluate TypeScript and decode JSON result."
+  @spec eval_ts_decode(pool(), String.t()) :: {:ok, term()} | {:error, term()}
+  def eval_ts_decode(pool, code) do
+    GenServer.call(pool, {:eval_ts_decode, code}, :infinity)
+  end
+
+  @doc "Call a named JavaScript function and decode the JSON result."
+  @spec call_decode(pool(), String.t(), list()) :: {:ok, term()} | {:error, term()}
+  def call_decode(pool, func_name, args \\ []) do
+    GenServer.call(pool, {:call_decode, func_name, args}, :infinity)
+  end
+
   @doc "Read and evaluate a JavaScript or TypeScript file."
   @spec eval_file(pool(), String.t(), keyword()) :: {:ok, String.t()} | {:error, String.t()}
   def eval_file(pool, path, opts \\ []) do
@@ -188,6 +200,16 @@ defmodule Denox.Pool do
   def handle_call({:eval_decode, code}, _from, state) do
     {rt, state} = next_runtime(state)
     {:reply, Denox.eval_decode(rt, code), state}
+  end
+
+  def handle_call({:eval_ts_decode, code}, _from, state) do
+    {rt, state} = next_runtime(state)
+    {:reply, Denox.eval_ts_decode(rt, code), state}
+  end
+
+  def handle_call({:call_decode, func_name, args}, _from, state) do
+    {rt, state} = next_runtime(state)
+    {:reply, Denox.call_decode(rt, func_name, args), state}
   end
 
   def handle_call({:eval_file, path, opts}, _from, state) do
