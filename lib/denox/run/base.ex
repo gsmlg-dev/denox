@@ -89,13 +89,28 @@ defmodule Denox.Run.Base do
         GenServer.call(server, {:recv, timeout}, timeout + 1000)
       end
 
-      @doc "Subscribe the calling process to stdout messages."
+      @doc """
+      Subscribe the calling process to stdout messages.
+
+      After subscribing, the calling process will receive:
+
+        - `{:denox_run_stdout, server_pid, line}` for each stdout line
+        - `{:denox_run_exit, server_pid, exit_status}` when the process exits
+
+      If the subscribing process dies, it is automatically removed from the
+      subscriber list without needing an explicit `unsubscribe/1` call.
+      """
       @spec subscribe(GenServer.server()) :: :ok
       def subscribe(server) do
         GenServer.call(server, {:subscribe, self()})
       end
 
-      @doc "Unsubscribe from stdout messages."
+      @doc """
+      Unsubscribe from stdout messages.
+
+      The calling process will stop receiving `{:denox_run_stdout, ...}` and
+      `{:denox_run_exit, ...}` messages from this server.
+      """
       @spec unsubscribe(GenServer.server()) :: :ok
       def unsubscribe(server) do
         GenServer.call(server, {:unsubscribe, self()})

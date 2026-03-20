@@ -16,6 +16,22 @@ defmodule Denox.CLI.Run do
 
       :ok = Denox.CLI.Run.send(pid, data)
       {:ok, line} = Denox.CLI.Run.recv(pid, timeout: 5000)
+
+  ## Telemetry Events
+
+  Denox.CLI.Run emits the following telemetry events:
+
+    * `[:denox, :run, :start]` — emitted when the runtime starts
+      * Measurements: `%{system_time: integer}`
+      * Metadata: `%{package: string | nil, file: string | nil, backend: :cli}`
+
+    * `[:denox, :run, :stop]` — emitted when the runtime exits
+      * Measurements: `%{system_time: integer}`
+      * Metadata: `%{package: string | nil, file: string | nil, exit_status: integer, backend: :cli}`
+
+    * `[:denox, :run, :recv]` — emitted for each stdout line received
+      * Measurements: `%{system_time: integer}`
+      * Metadata: `%{line_bytes: integer, backend: :cli}`
   """
 
   use Denox.Run.Base, backend: :cli
