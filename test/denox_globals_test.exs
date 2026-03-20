@@ -402,4 +402,99 @@ defmodule DenoxGlobalsTest do
       assert {:ok, ~s("1")} = Denox.eval(rt, code)
     end
   end
+
+  describe "Deno namespace" do
+    test "Deno object is available", %{rt: rt} do
+      assert {:ok, ~s("object")} = Denox.eval(rt, "typeof Deno")
+    end
+
+    test "Deno.version reports deno/v8/typescript", %{rt: rt} do
+      assert {:ok, version} = Denox.eval_decode(rt, "Deno.version")
+      assert is_binary(version["deno"])
+      assert is_binary(version["v8"])
+      assert is_binary(version["typescript"])
+    end
+
+    test "Deno.pid is a positive integer", %{rt: rt} do
+      assert {:ok, pid_str} = Denox.eval(rt, "Deno.pid")
+      assert {pid, ""} = Integer.parse(pid_str)
+      assert pid > 0
+    end
+
+    test "Deno.env.get returns environment variable", %{rt: rt} do
+      :ok = Denox.exec(rt, ~s[Deno.env.set("DENOX_TEST_VAR", "hello_denox")])
+      assert {:ok, ~s("hello_denox")} = Denox.eval(rt, ~s[Deno.env.get("DENOX_TEST_VAR")])
+    end
+
+    test "Deno.env.toObject returns object", %{rt: rt} do
+      assert {:ok, env} = Denox.eval_decode(rt, "Deno.env.toObject()")
+      assert is_map(env)
+    end
+
+    test "Deno.args is an array", %{rt: rt} do
+      assert {:ok, "true"} = Denox.eval(rt, "Array.isArray(Deno.args)")
+    end
+
+    test "Deno.build reports platform info", %{rt: rt} do
+      assert {:ok, build} = Denox.eval_decode(rt, "Deno.build")
+      assert is_binary(build["os"])
+      assert is_binary(build["arch"])
+      assert is_binary(build["target"])
+    end
+
+    test "Deno.readTextFileSync reads a file", %{rt: rt} do
+      path = Path.join(System.tmp_dir!(), "denox_test_#{System.unique_integer([:positive])}.txt")
+      File.write!(path, "test content")
+
+      on_exit(fn -> File.rm(path) end)
+
+      code = ~s[Deno.readTextFileSync("#{path}")]
+      assert {:ok, ~s("test content")} = Denox.eval(rt, code)
+    end
+
+    test "Deno.writeTextFileSync writes a file" do
+      {:ok, rt} =
+        Denox.runtime(
+          permissions: [allow_write: [System.tmp_dir!()], allow_read: [System.tmp_dir!()]]
+        )
+
+      path =
+        Path.join(System.tmp_dir!(), "denox_write_test_#{System.unique_integer([:positive])}.txt")
+
+      on_exit(fn -> File.rm(path) end)
+
+      code = ~s[Deno.writeTextFileSync("#{path}", "written by deno"); "ok"]
+      assert {:ok, ~s("ok")} = Denox.eval(rt, code)
+      assert File.read!(path) == "written by deno"
+    end
+  end
+
+  describe "Deno permissions enforcement" do
+    test "deny_all mode blocks file reads" do
+      {:ok, rt} = Denox.runtime(permissions: :none)
+      path = Path.join(System.tmp_dir!(), "test.txt")
+      File.write!(path, "secret")
+      on_exit(fn -> File.rm(path) end)
+
+      assert {:error, msg} = Denox.eval(rt, ~s[Deno.readTextFileSync("#{path}")])
+      assert msg =~ "read access"
+    end
+
+    test "deny_all mode blocks env access" do
+      {:ok, rt} = Denox.runtime(permissions: :none)
+
+      assert {:error, msg} = Denox.eval(rt, ~s[Deno.env.get("HOME")])
+      assert msg =~ "env access"
+    end
+
+    test "granular allow_read permits specific paths" do
+      tmp = System.tmp_dir!()
+      {:ok, rt} = Denox.runtime(permissions: [allow_read: [tmp]])
+      path = Path.join(tmp, "denox_granular_#{System.unique_integer([:positive])}.txt")
+      File.write!(path, "allowed")
+      on_exit(fn -> File.rm(path) end)
+
+      assert {:ok, ~s("allowed")} = Denox.eval(rt, ~s[Deno.readTextFileSync("#{path}")])
+    end
+  end
 end
