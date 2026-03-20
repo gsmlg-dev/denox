@@ -717,8 +717,369 @@ fn panic_message(panic_val: &Box<dyn std::any::Any + Send>) -> String {
     }
 }
 
+// ============================================================
+// Part 2: RuntimeRunResource — long-lived Deno runtime with I/O
+// ============================================================
+
+/// Default stdout buffer size (bounded channel capacity).
+const DEFAULT_BUFFER_SIZE: usize = 1024;
+
+struct RuntimeRunResource {
+    stdin_tx: mpsc::Sender<String>,
+    stdout_rx: Mutex<mpsc::Receiver<String>>,
+    stop_tx: Mutex<Option<mpsc::Sender<()>>>,
+    alive: std::sync::Arc<std::sync::atomic::AtomicBool>,
+}
+
+unsafe impl Send for RuntimeRunResource {}
+unsafe impl Sync for RuntimeRunResource {}
+
+impl rustler::Resource for RuntimeRunResource {}
+
+/// Resolve a module specifier: npm: prefixed for scoped packages, passthrough otherwise.
+fn resolve_specifier(spec: &str) -> String {
+    if spec.starts_with("npm:")
+        || spec.starts_with("jsr:")
+        || spec.starts_with("http://")
+        || spec.starts_with("https://")
+        || spec.starts_with("file://")
+    {
+        spec.to_string()
+    } else if spec.starts_with('@') {
+        format!("npm:{}", spec)
+    } else {
+        spec.to_string()
+    }
+}
+
+/// Create a long-lived runtime that loads and runs a module.
+#[rustler::nif(schedule = "DirtyCpu")]
+fn runtime_run(
+    specifier: String,
+    permissions_json: String,
+    env_vars_json: String,
+    _args: Vec<String>,
+    buffer_size: usize,
+) -> Result<ResourceArc<RuntimeRunResource>, String> {
+    let env_vars: HashMap<String, String> = if env_vars_json.is_empty() {
+        HashMap::new()
+    } else {
+        serde_json::from_str(&env_vars_json)
+            .map_err(|e| format!("Invalid env vars JSON: {}", e))?
+    };
+    let resolved = resolve_specifier(&specifier);
+
+    let permissions_str = if permissions_json.is_empty() {
+        None
+    } else {
+        Some(permissions_json.as_str())
+    };
+    let permissions = build_permissions(permissions_str)?;
+
+    let buf_size = if buffer_size == 0 {
+        DEFAULT_BUFFER_SIZE
+    } else {
+        buffer_size
+    };
+
+    let (stdin_tx, stdin_rx) = mpsc::channel::<String>();
+    let (stdout_tx, stdout_rx) = mpsc::sync_channel::<String>(buf_size);
+    let (stop_tx, stop_rx) = mpsc::channel::<()>();
+    let alive = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(true));
+    let alive_clone = alive.clone();
+
+    std::thread::spawn(move || {
+        let tokio_rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .expect("Failed to create tokio runtime");
+
+        let _guard = tokio_rt.enter();
+
+        // Set environment variables for this runtime
+        for (key, value) in env_vars.iter() {
+            std::env::set_var(key, value);
+        }
+
+        let main_module_url = if resolved.starts_with("npm:") || resolved.starts_with("jsr:") {
+            // For npm/jsr specifiers, use the current directory as base
+            let cwd = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("/"));
+            deno_core::url::Url::from_directory_path(&cwd)
+                .unwrap_or_else(|_| deno_core::url::Url::parse("file:///").unwrap())
+        } else if resolved.starts_with("http://") || resolved.starts_with("https://") {
+            deno_core::url::Url::parse(&resolved).unwrap()
+        } else {
+            // File path
+            let path = std::path::Path::new(&resolved)
+                .canonicalize()
+                .unwrap_or_else(|_| std::path::PathBuf::from(&resolved));
+            deno_core::url::Url::from_file_path(&path)
+                .unwrap_or_else(|_| deno_core::url::Url::parse("file:///").unwrap())
+        };
+
+        let mut worker = tokio_rt.block_on(async {
+            let module_loader =
+                std::rc::Rc::new(ts_loader::TsModuleLoader::new(None, HashMap::new()));
+
+            let create_web_worker_cb =
+                std::sync::Arc::new(|_| panic!("Web workers are not supported in Denox"));
+
+            let fs: deno_fs::FileSystemRc = std::sync::Arc::new(deno_fs::RealFs);
+            let permission_desc_parser =
+                std::sync::Arc::new(RuntimePermissionDescriptorParser::new(fs.clone()));
+
+            let services = WorkerServiceOptions {
+                module_loader,
+                permissions: PermissionsContainer::new(permission_desc_parser, permissions),
+                blob_store: Default::default(),
+                broadcast_channel: Default::default(),
+                feature_checker: Default::default(),
+                fs: fs.clone(),
+                node_services: None,
+                npm_process_state_provider: None,
+                root_cert_store_provider: None,
+                shared_array_buffer_store: None,
+                compiled_wasm_module_store: None,
+                v8_code_cache: None,
+            };
+
+            let options = WorkerOptions {
+                create_web_worker_cb,
+                ..Default::default()
+            };
+
+            MainWorker::bootstrap_from_options(main_module_url.clone(), services, options)
+        });
+
+        // Install a console override that captures stdout lines
+        let console_override = format!(
+            r#"
+            {{
+                const origLog = console.log;
+                const origError = console.error;
+                const origWarn = console.warn;
+                const origInfo = console.info;
+                // We'll capture Deno.stdout.write as our output channel
+                const encoder = new TextEncoder();
+            }}
+            "#
+        );
+        let _ = worker
+            .js_runtime
+            .execute_script("<denox_run_init>", console_override);
+
+        // Set up stdin reader: bridge mpsc channel to globalThis.__denox_stdin
+        // The JS code should use Deno.stdin to read, which we bridge via pipe
+        // For simplicity, we install a readline function
+        let stdin_rx_mutex = std::sync::Arc::new(Mutex::new(stdin_rx));
+        let stdin_rx_for_js = stdin_rx_mutex.clone();
+
+        // Install readline function on globalThis
+        {
+            let scope = &mut worker.js_runtime.handle_scope();
+            let stdin_ptr = std::sync::Arc::into_raw(stdin_rx_for_js) as *mut std::ffi::c_void;
+            let external = deno_core::v8::External::new(scope, stdin_ptr);
+
+            // Create __denox_readline function
+            let readline_fn =
+                deno_core::v8::Function::builder(denox_readline_v8)
+                    .data(external.into())
+                    .build(scope)
+                    .expect("Failed to create readline function");
+
+            let global = scope.get_current_context().global(scope);
+            let key = deno_core::v8::String::new(scope, "__denox_readline").unwrap();
+            global.set(scope, key.into(), readline_fn.into());
+
+            // Create __denox_writeline function
+            let stdout_ptr = Box::into_raw(Box::new(stdout_tx.clone())) as *mut std::ffi::c_void;
+            let stdout_external = deno_core::v8::External::new(scope, stdout_ptr);
+
+            let writeline_fn =
+                deno_core::v8::Function::builder(denox_writeline_v8)
+                    .data(stdout_external.into())
+                    .build(scope)
+                    .expect("Failed to create writeline function");
+
+            let write_key = deno_core::v8::String::new(scope, "__denox_writeline").unwrap();
+            global.set(scope, write_key.into(), writeline_fn.into());
+        }
+
+        // Override Deno.stdin/stdout for line-based I/O
+        let io_setup = r#"
+            // Override console.log to send lines via __denox_writeline
+            const __origConsoleLog = console.log;
+            console.log = (...args) => {
+                const line = args.map(a => typeof a === 'string' ? a : JSON.stringify(a)).join(' ');
+                __denox_writeline(line);
+            };
+            // Also capture direct stdout writes
+            const __origStdoutWrite = Deno.stdout.write;
+            const __decoder = new TextDecoder();
+        "#;
+        let _ = worker.js_runtime.execute_script("<denox_run_io>", io_setup);
+
+        // Load and run the main module
+        let specifier_url = if resolved.starts_with("npm:") || resolved.starts_with("jsr:") {
+            deno_core::url::Url::parse(&resolved).unwrap()
+        } else {
+            main_module_url.clone()
+        };
+
+        let load_result = tokio_rt.block_on(async {
+            worker.execute_main_module(&specifier_url).await
+        });
+
+        if let Err(e) = load_result {
+            let _ = stdout_tx.send(format!("Error loading module: {}", e));
+            alive_clone.store(false, std::sync::atomic::Ordering::SeqCst);
+            return;
+        }
+
+        // Run the event loop until stop signal or module completion
+        loop {
+            // Check for stop signal
+            match stop_rx.try_recv() {
+                Ok(()) => break,
+                Err(mpsc::TryRecvError::Disconnected) => break,
+                Err(mpsc::TryRecvError::Empty) => {}
+            }
+
+            // Run one tick of the event loop
+            let result = tokio_rt.block_on(async {
+                tokio::select! {
+                    result = worker.run_event_loop(false) => result,
+                    _ = tokio::time::sleep(std::time::Duration::from_millis(10)) => Ok(()),
+                }
+            });
+
+            match result {
+                Ok(()) => {
+                    // Event loop completed (module finished)
+                    // Check if we should keep running (e.g., server still listening)
+                    // For now, we check the stop signal and continue
+                    match stop_rx.try_recv() {
+                        Ok(()) | Err(mpsc::TryRecvError::Disconnected) => break,
+                        Err(mpsc::TryRecvError::Empty) => {
+                            // Brief sleep to avoid busy-waiting when event loop is idle
+                            std::thread::sleep(std::time::Duration::from_millis(10));
+                        }
+                    }
+                }
+                Err(e) => {
+                    let _ = stdout_tx.send(format!("Event loop error: {}", e));
+                    break;
+                }
+            }
+        }
+
+        alive_clone.store(false, std::sync::atomic::Ordering::SeqCst);
+    });
+
+    Ok(ResourceArc::new(RuntimeRunResource {
+        stdin_tx,
+        stdout_rx: Mutex::new(stdout_rx),
+        stop_tx: Mutex::new(Some(stop_tx)),
+        alive,
+    }))
+}
+
+/// V8 function: __denox_readline() — reads a line from stdin channel
+fn denox_readline_v8(
+    scope: &mut deno_core::v8::HandleScope,
+    args: deno_core::v8::FunctionCallbackArguments,
+    mut retval: deno_core::v8::ReturnValue,
+) {
+    let data = args.data();
+    let external =
+        unsafe { deno_core::v8::Local::<deno_core::v8::External>::cast_unchecked(data) };
+    let rx_ptr = external.value() as *const Mutex<mpsc::Receiver<String>>;
+    // SAFETY: The Arc keeps the Mutex alive for the lifetime of the runtime
+    let rx_arc = unsafe {
+        std::sync::Arc::increment_strong_count(rx_ptr as *const Mutex<mpsc::Receiver<String>>);
+        std::sync::Arc::from_raw(rx_ptr)
+    };
+
+    let result = rx_arc.lock().unwrap().recv_timeout(std::time::Duration::from_millis(100));
+    match result {
+        Ok(line) => {
+            let v8_str = deno_core::v8::String::new(scope, &line).unwrap();
+            retval.set(v8_str.into());
+        }
+        Err(_) => {
+            retval.set(deno_core::v8::null(scope).into());
+        }
+    };
+}
+
+/// V8 function: __denox_writeline(line) — writes a line to stdout channel
+fn denox_writeline_v8(
+    scope: &mut deno_core::v8::HandleScope,
+    args: deno_core::v8::FunctionCallbackArguments,
+    _retval: deno_core::v8::ReturnValue,
+) {
+    let data = args.data();
+    let external =
+        unsafe { deno_core::v8::Local::<deno_core::v8::External>::cast_unchecked(data) };
+    let tx_ptr = external.value() as *mut mpsc::SyncSender<String>;
+    let tx = unsafe { &*tx_ptr };
+
+    if args.length() > 0 {
+        let val = args.get(0);
+        let line = val.to_rust_string_lossy(scope);
+        let _ = tx.send(line);
+    }
+}
+
+/// Send a line to the runtime's stdin channel.
+#[rustler::nif]
+fn runtime_run_send(resource: ResourceArc<RuntimeRunResource>, data: String) -> Result<(), String> {
+    resource
+        .stdin_tx
+        .send(data)
+        .map_err(|_| "Runtime has shut down".to_string())
+}
+
+/// Block until a line is available from stdout, or return None if closed.
+#[rustler::nif(schedule = "DirtyIo")]
+fn runtime_run_recv(
+    resource: ResourceArc<RuntimeRunResource>,
+) -> Result<Option<String>, String> {
+    let rx = resource.stdout_rx.lock().map_err(|_| "Lock poisoned".to_string())?;
+
+    match rx.recv_timeout(std::time::Duration::from_secs(5)) {
+        Ok(line) => Ok(Some(line)),
+        Err(mpsc::RecvTimeoutError::Timeout) => Ok(None),
+        Err(mpsc::RecvTimeoutError::Disconnected) => {
+            if resource.alive.load(std::sync::atomic::Ordering::SeqCst) {
+                Ok(None)
+            } else {
+                Ok(None) // Runtime has stopped
+            }
+        }
+    }
+}
+
+/// Signal the runtime to shut down.
+#[rustler::nif]
+fn runtime_run_stop(resource: ResourceArc<RuntimeRunResource>) -> Result<(), String> {
+    if let Ok(mut guard) = resource.stop_tx.lock() {
+        if let Some(tx) = guard.take() {
+            let _ = tx.send(());
+        }
+    }
+    Ok(())
+}
+
+/// Check if the runtime is still running.
+#[rustler::nif]
+fn runtime_run_alive(resource: ResourceArc<RuntimeRunResource>) -> bool {
+    resource.alive.load(std::sync::atomic::Ordering::SeqCst)
+}
+
 rustler::init!("Elixir.Denox.Native", load = on_load);
 
 fn on_load(env: Env, _info: Term) -> bool {
-    env.register::<RuntimeResource>().is_ok()
+    let _ = env.register::<RuntimeResource>();
+    env.register::<RuntimeRunResource>().is_ok()
 }

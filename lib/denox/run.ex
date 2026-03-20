@@ -35,35 +35,39 @@ defmodule Denox.Run do
       Denox.Run.stop(pid)
   """
 
-  use Denox.Run.Base, backend: :subprocess
+  use Denox.Run.Base, backend: :nif
 
   # --- Backend callbacks ---
 
   @impl Denox.Run.Base
   def init_backend(opts) do
-    case find_deno() do
-      {:ok, deno_path} ->
-        args = build_args(opts)
-        env = build_env(opts)
+    package = Keyword.get(opts, :package)
+    file = Keyword.get(opts, :file)
+    specifier = package || file
+    permissions = Keyword.get(opts, :permissions)
+    env = Keyword.get(opts, :env, %{})
+    args = Keyword.get(opts, :args, [])
+    buffer_size = Keyword.get(opts, :buffer_size, 0)
 
-        port =
-          Port.open({:spawn_executable, deno_path}, [
-            :binary,
-            :exit_status,
-            :use_stdio,
-            :stderr_to_stdout,
-            {:args, args},
-            {:env, env},
-            {:line, 1_048_576}
-          ])
+    permissions_json = build_permissions_json(permissions)
 
-        os_pid =
-          case Port.info(port, :os_pid) do
-            {:os_pid, pid} -> pid
-            nil -> 0
-          end
+    env_vars_json =
+      env
+      |> Enum.into(%{}, fn {k, v} -> {to_string(k), to_string(v)} end)
+      |> JSON.encode!()
 
-        {:ok, %{port: port, os_pid: os_pid}}
+    case Denox.Native.runtime_run(specifier, permissions_json, env_vars_json, args, buffer_size) do
+      {:ok, resource} ->
+        # Spawn a receiver task that loops runtime_run_recv on a dirty scheduler
+        gen_server_pid = self()
+        receiver_ref = make_ref()
+
+        receiver_pid =
+          spawn_link(fn ->
+            receiver_loop(resource, gen_server_pid, receiver_ref)
+          end)
+
+        {:ok, %{resource: resource, receiver_pid: receiver_pid, receiver_ref: receiver_ref}}
 
       {:error, reason} ->
         {:error, reason}
@@ -71,37 +75,36 @@ defmodule Denox.Run do
   end
 
   @impl Denox.Run.Base
-  def send_backend(%{port: port}, data) do
-    Port.command(port, data)
+  def send_backend(%{resource: resource}, data) do
+    Denox.Native.runtime_run_send(resource, data)
+  end
+
+  @impl Denox.Run.Base
+  def stop_backend(%{resource: resource, receiver_pid: receiver_pid}) do
+    Denox.Native.runtime_run_stop(resource)
+    Process.unlink(receiver_pid)
+    Process.exit(receiver_pid, :shutdown)
     :ok
   end
 
   @impl Denox.Run.Base
-  def stop_backend(%{port: port}) do
-    Port.close(port)
-    :ok
+  def alive_backend?(%{resource: resource}) do
+    Denox.Native.runtime_run_alive(resource)
   end
 
-  @impl Denox.Run.Base
-  def alive_backend?(%{port: port}) do
-    Port.info(port) != nil
-  end
-
-  # --- Port message handling ---
+  # --- Receiver messages ---
 
   @impl GenServer
-  def handle_info({port, {:data, {:eol, line}}}, %{backend_state: %{port: port}} = state) do
+  def handle_info({:denox_run_line, ref, line}, %{backend_state: %{receiver_ref: ref}} = state) do
     state = dispatch_line(line, state)
     {:noreply, state}
   end
 
-  def handle_info({port, {:data, {:noeol, chunk}}}, %{backend_state: %{port: port}} = state) do
-    state = dispatch_line(chunk, state)
-    {:noreply, state}
-  end
-
-  def handle_info({port, {:exit_status, status}}, %{backend_state: %{port: port}} = state) do
-    state = handle_exit(status, state)
+  def handle_info(
+        {:denox_run_closed, ref},
+        %{backend_state: %{receiver_ref: ref}} = state
+      ) do
+    state = handle_exit(0, state)
     {:noreply, state}
   end
 
@@ -109,87 +112,38 @@ defmodule Denox.Run do
     super(msg, state)
   end
 
-  # --- Public: os_pid ---
-
-  @doc "Get the OS PID of the subprocess."
-  @spec os_pid(GenServer.server()) :: {:ok, non_neg_integer()} | {:error, :not_running}
-  def os_pid(server) do
-    GenServer.call(server, :os_pid)
-  end
-
   # --- Private ---
 
-  defp find_deno do
-    case System.find_executable("deno") do
-      nil -> {:error, "deno CLI not found in PATH. Install from https://deno.land"}
-      path -> {:ok, path}
+  defp receiver_loop(resource, gen_server_pid, ref) do
+    case Denox.Native.runtime_run_recv(resource) do
+      {:ok, nil} ->
+        # Timeout or no data — check if still alive
+        if Denox.Native.runtime_run_alive(resource) do
+          receiver_loop(resource, gen_server_pid, ref)
+        else
+          Kernel.send(gen_server_pid, {:denox_run_closed, ref})
+        end
+
+      {:ok, line} ->
+        Kernel.send(gen_server_pid, {:denox_run_line, ref, line})
+        receiver_loop(resource, gen_server_pid, ref)
+
+      {:error, _reason} ->
+        Kernel.send(gen_server_pid, {:denox_run_closed, ref})
     end
   end
 
-  defp build_args(opts) do
-    package = Keyword.get(opts, :package)
-    file = Keyword.get(opts, :file)
-    permissions = Keyword.get(opts, :permissions)
-    extra_flags = Keyword.get(opts, :deno_flags, [])
-    extra_args = Keyword.get(opts, :args, [])
+  defp build_permissions_json(:all), do: ~s|{"mode":"allow_all"}|
+  defp build_permissions_json(nil), do: ~s|{"mode":"deny_all"}|
 
-    specifier = resolve_specifier(package || file)
+  defp build_permissions_json(perms) when is_list(perms) do
+    granular =
+      Enum.reduce(perms, %{"mode" => "granular"}, fn
+        {key, true}, acc -> Map.put(acc, Atom.to_string(key), true)
+        {key, values}, acc when is_list(values) -> Map.put(acc, Atom.to_string(key), values)
+        {_key, false}, acc -> acc
+      end)
 
-    ["run"] ++
-      permissions_to_args(permissions) ++
-      extra_flags ++
-      [specifier] ++
-      extra_args
-  end
-
-  defp resolve_specifier(spec) do
-    cond do
-      String.starts_with?(spec, ["npm:", "jsr:", "http://", "https://", "file://"]) ->
-        spec
-
-      String.starts_with?(spec, "@") ->
-        "npm:#{spec}"
-
-      true ->
-        spec
-    end
-  end
-
-  @permission_flags ~w(
-    allow_net allow_env allow_read allow_write allow_run
-    allow_ffi allow_sys allow_hrtime
-    deny_net deny_env deny_read deny_write deny_run
-    deny_ffi deny_sys deny_hrtime
-  )a
-
-  defp permissions_to_args(:all), do: ["-A"]
-  defp permissions_to_args(nil), do: []
-
-  defp permissions_to_args(perms) when is_list(perms) do
-    Enum.flat_map(perms, &permission_to_flag/1)
-  end
-
-  defp permission_to_flag({key, true}) when key in @permission_flags do
-    [flag_name(key)]
-  end
-
-  defp permission_to_flag({key, values}) when key in @permission_flags and is_list(values) do
-    ["#{flag_name(key)}=#{Enum.join(values, ",")}"]
-  end
-
-  defp permission_to_flag({_key, false}), do: []
-
-  defp permission_to_flag({key, _value}) do
-    raise ArgumentError, "unknown permission flag: #{inspect(key)}"
-  end
-
-  defp flag_name(key) do
-    "--" <> (key |> Atom.to_string() |> String.replace("_", "-"))
-  end
-
-  defp build_env(opts) do
-    opts
-    |> Keyword.get(:env, %{})
-    |> Enum.map(fn {k, v} -> {String.to_charlist(k), String.to_charlist(v)} end)
+    JSON.encode!(granular)
   end
 end
