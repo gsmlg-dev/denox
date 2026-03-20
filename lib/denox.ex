@@ -324,11 +324,7 @@ defmodule Denox do
   """
   @spec eval_async_decode(runtime(), String.t()) :: Task.t()
   def eval_async_decode(rt, code) do
-    Task.async(fn ->
-      with {:ok, json} <-
-             telemetry_span(:eval_async_decode, fn -> Native.eval_async(rt, code, false) end),
-           do: Denox.JSON.decode(json)
-    end)
+    Task.async(fn -> do_eval_async_decode(rt, code) end)
   end
 
   @doc """
@@ -338,11 +334,7 @@ defmodule Denox do
   """
   @spec eval_ts_async_decode(runtime(), String.t()) :: Task.t()
   def eval_ts_async_decode(rt, code) do
-    Task.async(fn ->
-      with {:ok, json} <-
-             telemetry_span(:eval_ts_async_decode, fn -> Native.eval_async(rt, code, true) end),
-           do: Denox.JSON.decode(json)
-    end)
+    Task.async(fn -> do_eval_ts_async_decode(rt, code) end)
   end
 
   @doc """
@@ -380,20 +372,32 @@ defmodule Denox do
   @spec eval_file_async_decode(runtime(), String.t(), keyword()) :: Task.t()
   def eval_file_async_decode(rt, path, opts \\ []) do
     transpile = Keyword.get(opts, :transpile, ts_extension?(path))
-
-    Task.async(fn ->
-      case File.read(path) do
-        {:ok, code} ->
-          with {:ok, json} <- Native.eval_async(rt, code, transpile),
-               do: Denox.JSON.decode(json)
-
-        {:error, reason} ->
-          {:error, "Failed to read #{path}: #{reason}"}
-      end
-    end)
+    Task.async(fn -> do_eval_file_async_decode(rt, path, transpile) end)
   end
 
   # --- Private ---
+
+  defp do_eval_async_decode(rt, code) do
+    with {:ok, json} <-
+           telemetry_span(:eval_async_decode, fn -> Native.eval_async(rt, code, false) end),
+         do: Denox.JSON.decode(json)
+  end
+
+  defp do_eval_ts_async_decode(rt, code) do
+    with {:ok, json} <-
+           telemetry_span(:eval_ts_async_decode, fn -> Native.eval_async(rt, code, true) end),
+         do: Denox.JSON.decode(json)
+  end
+
+  defp do_eval_file_async_decode(rt, path, transpile) do
+    case File.read(path) do
+      {:ok, code} ->
+        with {:ok, json} <- Native.eval_async(rt, code, transpile), do: Denox.JSON.decode(json)
+
+      {:error, reason} ->
+        {:error, "Failed to read #{path}: #{reason}"}
+    end
+  end
 
   defp build_permissions_json(opts, sandbox) do
     permissions = Keyword.get(opts, :permissions)
