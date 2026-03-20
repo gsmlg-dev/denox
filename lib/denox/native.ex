@@ -69,7 +69,7 @@ defmodule Denox.Native do
   def runtime_run(_specifier, _permissions_json, _env_vars_json, _args_json, _buffer_size),
     do: :erlang.nif_error(:nif_not_loaded)
 
-  @spec runtime_run_send(reference(), String.t()) :: :ok | {:ok, term()} | {:error, String.t()}
+  @spec runtime_run_send(reference(), String.t()) :: {:ok, {}} | {:error, String.t()}
   def runtime_run_send(_resource, _data), do: :erlang.nif_error(:nif_not_loaded)
 
   @spec runtime_run_recv(reference()) :: {:ok, String.t() | nil} | {:error, String.t()}

@@ -94,7 +94,6 @@ defmodule Denox.Run do
   def send_backend(%{resource: resource}, data) do
     case Denox.Native.runtime_run_send(resource, data) do
       {:ok, _} -> :ok
-      :ok -> :ok
       {:error, _} = error -> error
     end
   end
