@@ -24,6 +24,8 @@ Denox gives Elixir applications first-class access to the JS/TS ecosystem — ev
 - **JS → Elixir callbacks** — call Elixir functions from JavaScript
 - **V8 snapshots** — pre-initialize global state for faster cold starts
 - **Telemetry** — built-in `:telemetry` events for eval timing
+- **`Denox.Run`** — NIF-backed long-lived runtime with bidirectional stdio, OTP supervision, no external `deno` binary needed
+- **`Denox.CLI`** — downloads and caches the official Deno binary for the current platform
 
 ## Installation
 
@@ -95,9 +97,9 @@ children = [
 {:ok, result} = Denox.Pool.eval_async(:js_pool, "return await Promise.resolve(99)")
 ```
 
-## Deno Subprocess (`Denox.Run`)
+## Long-lived Deno Runtime (`Denox.Run`)
 
-Run full Deno programs as managed OTP subprocesses with bidirectional stdio. Ideal for running MCP servers, CLI tools, or any npm/jsr package that needs its own process.
+Run full Deno programs as managed OTP processes with bidirectional stdio. Uses an in-process `deno_runtime` MainWorker via NIF — no external `deno` binary required. Ideal for running MCP servers, CLI tools, or any npm/jsr package.
 
 ```elixir
 # Run an MCP server from npm
@@ -176,6 +178,36 @@ Supervisor.start_link(children, strategy: :one_for_one)
 # Use the named process
 Denox.Run.send(:github_mcp, request)
 {:ok, response} = Denox.Run.recv(:github_mcp)
+```
+
+## Bundled Deno Binary (`Denox.CLI`)
+
+Download and cache the official Deno binary for the current platform (macOS/Linux, x86_64/aarch64). Similar to how `tailwind` or `esbuild` hex packages manage their binaries.
+
+```elixir
+# config/config.exs
+config :denox, :cli, version: "2.1.4"
+```
+
+```bash
+# Download the binary
+mix denox.cli.install
+```
+
+```elixir
+# Use in code
+{:ok, path} = Denox.CLI.bin_path()   # downloads if needed
+Denox.CLI.installed?()                # check without downloading
+```
+
+`Denox.CLI.Run` provides the same `send/recv/subscribe` API as `Denox.Run`, but uses the bundled binary as a subprocess:
+
+```elixir
+{:ok, pid} = Denox.CLI.Run.start_link(
+  file: "scripts/server.ts",
+  permissions: :all,
+  env: %{"API_KEY" => key}
+)
 ```
 
 ## Import Maps
