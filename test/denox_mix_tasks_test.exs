@@ -5,6 +5,8 @@ defmodule DenoxMixTasksTest do
   """
   use ExUnit.Case, async: false
 
+  @moduletag :tmp_dir
+
   describe "mix denox.add" do
     test "raises when called with wrong number of arguments" do
       Mix.Task.reenable("denox.add")
@@ -36,6 +38,19 @@ defmodule DenoxMixTasksTest do
         ])
       end
     end
+
+    test "prints success when add succeeds with empty deno.json", %{tmp_dir: dir} do
+      Mix.Task.reenable("denox.add")
+      config = Path.join(dir, "deno.json")
+      File.write!(config, ~s({"imports":{}}))
+
+      # file: specifier with a local file — deno install runs fast with no real packages
+      local_js = Path.join(dir, "local.js")
+      File.write!(local_js, "export const x = 1;")
+
+      # Should print "Added localpkg successfully." without raising
+      Mix.Task.run("denox.add", ["localpkg", "file:./local.js", "--config", config])
+    end
   end
 
   describe "mix denox.remove" do
@@ -55,6 +70,15 @@ defmodule DenoxMixTasksTest do
         Mix.Task.run("denox.remove", ["zod", "--config", "/nonexistent_dir/deno.json"])
       end
     end
+
+    test "prints success when remove succeeds with empty deno.json", %{tmp_dir: dir} do
+      Mix.Task.reenable("denox.remove")
+      config = Path.join(dir, "deno.json")
+      File.write!(config, ~s({"imports":{"oldpkg":"npm:oldpkg@1.0"}}))
+
+      # Removing a pkg that may or may not exist — deno install with empty imports exits 0
+      Mix.Task.run("denox.remove", ["oldpkg", "--config", config])
+    end
   end
 
   describe "mix denox.install" do
@@ -65,6 +89,15 @@ defmodule DenoxMixTasksTest do
       assert_raise Mix.Error, fn ->
         Mix.Task.run("denox.install", ["--config", "/nonexistent_install_dir/deno.json"])
       end
+    end
+
+    test "prints success when install succeeds with empty deno.json", %{tmp_dir: dir} do
+      Mix.Task.reenable("denox.install")
+      config = Path.join(dir, "deno.json")
+      File.write!(config, ~s({"imports":{}}))
+
+      # deno install with empty imports exits 0 — prints "Dependencies installed successfully."
+      Mix.Task.run("denox.install", ["--config", config])
     end
   end
 
