@@ -165,8 +165,16 @@ defmodule Denox.Run.Base do
         # Remove subscriber with this monitor ref
         subscribers = Enum.reject(state.subscribers, fn {_p, sref} -> sref == ref end)
 
-        # Remove any recv_waiters with this monitor ref (3-tuple: {from, mon_ref, timeout_ref})
-        waiters = :queue.filter(fn {_from, wref, _tref} -> wref != ref end, state.recv_waiters)
+        # Remove any recv_waiters with this monitor ref, cancelling their timers to
+        # suppress stale :recv_timeout messages (4-tuple: {from, mon_ref, timeout_ref, timer_ref}).
+        waiters =
+          :queue.filter(
+            fn {_from, wref, _tref, timer_ref} ->
+              if wref == ref, do: Process.cancel_timer(timer_ref)
+              wref != ref
+            end,
+            state.recv_waiters
+          )
 
         {:noreply, %{state | subscribers: subscribers, recv_waiters: waiters}}
       end
@@ -202,7 +210,8 @@ defmodule Denox.Run.Base do
         end
 
         case :queue.out(state.recv_waiters) do
-          {{:value, {from, mon_ref, _tref}}, rest} ->
+          {{:value, {from, mon_ref, _tref, timer_ref}}, rest} ->
+            Process.cancel_timer(timer_ref)
             Process.demonitor(mon_ref, [:flush])
             GenServer.reply(from, {:ok, line})
             %{state | recv_waiters: rest}
@@ -238,7 +247,8 @@ defmodule Denox.Run.Base do
 
       defp drain_waiters(state) do
         case :queue.out(state.recv_waiters) do
-          {{:value, {from, mon_ref, _tref}}, rest} ->
+          {{:value, {from, mon_ref, _tref, timer_ref}}, rest} ->
+            Process.cancel_timer(timer_ref)
             Process.demonitor(mon_ref, [:flush])
             GenServer.reply(from, {:error, :closed})
             drain_waiters(%{state | recv_waiters: rest})
@@ -276,10 +286,9 @@ defmodule Denox.Run.Base do
         else
           {pid, _tag} = from
           mon_ref = Process.monitor(pid)
-          # Use a unique ref so we can cancel the timeout if a line arrives first
           timeout_ref = make_ref()
-          Process.send_after(self(), {:recv_timeout, timeout_ref}, timeout)
-          waiters = :queue.in({from, mon_ref, timeout_ref}, state.recv_waiters)
+          timer_ref = Process.send_after(self(), {:recv_timeout, timeout_ref}, timeout)
+          waiters = :queue.in({from, mon_ref, timeout_ref, timer_ref}, state.recv_waiters)
           {:noreply, %{state | recv_waiters: waiters}}
         end
     end
@@ -331,13 +340,13 @@ defmodule Denox.Run.Base do
     waiter_list = :queue.to_list(state.recv_waiters)
 
     {matching, rest} =
-      Enum.split_with(waiter_list, fn {_from, _mref, tref} -> tref == timeout_ref end)
+      Enum.split_with(waiter_list, fn {_from, _mref, tref, _tref2} -> tref == timeout_ref end)
 
     case matching do
       [] ->
         {:noreply, state}
 
-      [{from, mon_ref, _tref} | _] ->
+      [{from, mon_ref, _tref, _timer_ref} | _] ->
         Process.demonitor(mon_ref, [:flush])
         GenServer.reply(from, {:error, :timeout})
         {:noreply, %{state | recv_waiters: :queue.from_list(rest)}}
