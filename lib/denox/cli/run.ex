@@ -57,6 +57,8 @@ defmodule Denox.CLI.Run do
   def send_backend(%{port: port}, data) do
     Port.command(port, data)
     :ok
+  rescue
+    ArgumentError -> {:error, :closed}
   end
 
   @impl Denox.Run.Base

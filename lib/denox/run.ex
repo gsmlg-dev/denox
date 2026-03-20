@@ -1,10 +1,9 @@
 defmodule Denox.Run do
   @moduledoc """
-  Run Deno packages as managed subprocesses.
+  Run Deno programs as NIF-backed long-lived runtimes.
 
-  Wraps the `deno run` CLI in a GenServer with bidirectional stdio,
-  enabling Elixir applications to run full Deno programs (including
-  MCP servers, CLI tools, etc.) with OTP supervision.
+  Uses an in-process `deno_runtime` MainWorker (no external `deno` binary
+  required) wrapped in a GenServer with bidirectional stdio and OTP supervision.
 
   ## Examples
 
@@ -33,6 +32,15 @@ defmodule Denox.Run do
 
       # Stop the process
       Denox.Run.stop(pid)
+
+  ## Environment Variables
+
+  The `:env` option passes environment variables to the Deno runtime via
+  `Deno.env.get()`. The variables are set in the OS process environment
+  before the worker starts. **Note:** concurrent `Denox.Run` instances may
+  see each other's env vars if started simultaneously. For strict isolation,
+  use `Denox.CLI.Run` with a subprocess-per-instance model, or ensure env
+  var names are unique across instances.
   """
 
   use Denox.Run.Base, backend: :nif

@@ -263,8 +263,9 @@ defmodule Denox.Run.Base do
     {:reply, :ok, %{state | subscribers: List.delete(state.subscribers, pid)}}
   end
 
-  def __handle_call__(_module, :alive?, _from, state) do
-    {:reply, state.exit_status == nil, state}
+  def __handle_call__(module, :alive?, _from, state) do
+    alive = state.exit_status == nil and module.alive_backend?(state.backend_state)
+    {:reply, alive, state}
   end
 
   def __handle_call__(
