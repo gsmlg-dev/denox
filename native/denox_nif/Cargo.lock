@@ -1695,7 +1695,6 @@ dependencies = [
  "deno_ast",
  "deno_core",
  "deno_fs",
- "deno_io",
  "deno_permissions",
  "deno_runtime",
  "log",

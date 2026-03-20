@@ -7,6 +7,7 @@ use deno_core::RuntimeOptions;
 use deno_permissions::{Permissions, PermissionsContainer};
 use deno_runtime::permissions::RuntimePermissionDescriptorParser;
 use deno_runtime::worker::{MainWorker, WorkerOptions, WorkerServiceOptions};
+use deno_runtime::BootstrapOptions;
 use rustler::{Binary, Encoder, Env, LocalPid, OwnedBinary, ResourceArc, Term};
 use serde::Deserialize;
 use std::collections::HashMap;
@@ -109,6 +110,15 @@ enum PermValue {
     List(Vec<String>),
 }
 
+fn perm_value_to_vec(v: &Option<PermValue>) -> Option<Vec<String>> {
+    match v {
+        None => None,
+        Some(PermValue::Bool(true)) => Some(vec![]),
+        Some(PermValue::Bool(false)) => None,
+        Some(PermValue::List(items)) => Some(items.clone()),
+    }
+}
+
 fn build_permissions(config: Option<&str>) -> Result<Permissions, String> {
     let config = match config {
         Some(json) if !json.is_empty() => {
@@ -126,13 +136,36 @@ fn build_permissions(config: Option<&str>) -> Result<Permissions, String> {
         PermissionsConfig::DenyAll => {
             Ok(Permissions::none_without_prompt())
         }
-        PermissionsConfig::Granular { .. } => {
-            // For granular permissions, start with deny-all and selectively allow.
-            // Full granular support requires parsing each field into the proper
-            // UnaryPermission types, which is complex. For now, we support
-            // AllowAll and DenyAll, with granular as a future enhancement.
-            // TODO: Implement full granular permission parsing
-            Ok(Permissions::none_without_prompt())
+        PermissionsConfig::Granular {
+            allow_read, allow_write, allow_net, allow_env,
+            allow_run, allow_ffi, allow_sys,
+            deny_read, deny_write, deny_net, deny_env,
+            deny_run, deny_ffi, deny_sys,
+        } => {
+            let opts = deno_permissions::PermissionsOptions {
+                allow_all: false,
+                allow_read: perm_value_to_vec(&allow_read),
+                allow_write: perm_value_to_vec(&allow_write),
+                allow_net: perm_value_to_vec(&allow_net),
+                allow_env: perm_value_to_vec(&allow_env),
+                allow_run: perm_value_to_vec(&allow_run),
+                allow_ffi: perm_value_to_vec(&allow_ffi),
+                allow_sys: perm_value_to_vec(&allow_sys),
+                deny_read: perm_value_to_vec(&deny_read),
+                deny_write: perm_value_to_vec(&deny_write),
+                deny_net: perm_value_to_vec(&deny_net),
+                deny_env: perm_value_to_vec(&deny_env),
+                deny_run: perm_value_to_vec(&deny_run),
+                deny_ffi: perm_value_to_vec(&deny_ffi),
+                deny_sys: perm_value_to_vec(&deny_sys),
+                allow_import: None,
+                prompt: false,
+            };
+
+            let fs: deno_fs::FileSystemRc = std::sync::Arc::new(deno_fs::RealFs);
+            let parser = RuntimePermissionDescriptorParser::new(fs);
+            Permissions::from_options(&parser, &opts)
+                .map_err(|e| format!("Failed to create permissions: {}", e))
         }
     }
 }
@@ -758,7 +791,7 @@ fn runtime_run(
     specifier: String,
     permissions_json: String,
     env_vars_json: String,
-    _args: Vec<String>,
+    args_json: String,
     buffer_size: usize,
 ) -> Result<ResourceArc<RuntimeRunResource>, String> {
     let env_vars: HashMap<String, String> = if env_vars_json.is_empty() {
@@ -766,6 +799,12 @@ fn runtime_run(
     } else {
         serde_json::from_str(&env_vars_json)
             .map_err(|e| format!("Invalid env vars JSON: {}", e))?
+    };
+    let args: Vec<String> = if args_json.is_empty() {
+        vec![]
+    } else {
+        serde_json::from_str(&args_json)
+            .map_err(|e| format!("Invalid args JSON: {}", e))?
     };
     let resolved = resolve_specifier(&specifier);
 
@@ -843,44 +882,31 @@ fn runtime_run(
                 v8_code_cache: None,
             };
 
+            let mut bootstrap = BootstrapOptions::default();
+            bootstrap.args = args;
+
             let options = WorkerOptions {
                 create_web_worker_cb,
+                bootstrap,
                 ..Default::default()
             };
 
             MainWorker::bootstrap_from_options(main_module_url.clone(), services, options)
         });
 
-        // Install a console override that captures stdout lines
-        let console_override = format!(
-            r#"
-            {{
-                const origLog = console.log;
-                const origError = console.error;
-                const origWarn = console.warn;
-                const origInfo = console.info;
-                // We'll capture Deno.stdout.write as our output channel
-                const encoder = new TextEncoder();
-            }}
-            "#
-        );
-        let _ = worker
-            .js_runtime
-            .execute_script("<denox_run_init>", console_override);
-
-        // Set up stdin reader: bridge mpsc channel to globalThis.__denox_stdin
-        // The JS code should use Deno.stdin to read, which we bridge via pipe
-        // For simplicity, we install a readline function
+        // Install channel-based stdin/stdout bridge functions on globalThis.
+        // We keep raw pointers to the channel endpoints so V8 functions can
+        // access them. These MUST be reclaimed when the thread exits.
         let stdin_rx_mutex = std::sync::Arc::new(Mutex::new(stdin_rx));
         let stdin_rx_for_js = stdin_rx_mutex.clone();
+        let stdout_tx_clone = stdout_tx.clone();
 
-        // Install readline function on globalThis
+        let stdout_raw_ptr: *mut mpsc::SyncSender<String>;
         {
             let scope = &mut worker.js_runtime.handle_scope();
             let stdin_ptr = std::sync::Arc::into_raw(stdin_rx_for_js) as *mut std::ffi::c_void;
             let external = deno_core::v8::External::new(scope, stdin_ptr);
 
-            // Create __denox_readline function
             let readline_fn =
                 deno_core::v8::Function::builder(denox_readline_v8)
                     .data(external.into())
@@ -891,9 +917,9 @@ fn runtime_run(
             let key = deno_core::v8::String::new(scope, "__denox_readline").unwrap();
             global.set(scope, key.into(), readline_fn.into());
 
-            // Create __denox_writeline function
-            let stdout_ptr = Box::into_raw(Box::new(stdout_tx.clone())) as *mut std::ffi::c_void;
-            let stdout_external = deno_core::v8::External::new(scope, stdout_ptr);
+            stdout_raw_ptr = Box::into_raw(Box::new(stdout_tx_clone));
+            let stdout_external =
+                deno_core::v8::External::new(scope, stdout_raw_ptr as *mut std::ffi::c_void);
 
             let writeline_fn =
                 deno_core::v8::Function::builder(denox_writeline_v8)
@@ -905,17 +931,64 @@ fn runtime_run(
             global.set(scope, write_key.into(), writeline_fn.into());
         }
 
-        // Override Deno.stdin/stdout for line-based I/O
+        // Override console.log to send via channel, and bridge Deno.stdin
         let io_setup = r#"
-            // Override console.log to send lines via __denox_writeline
-            const __origConsoleLog = console.log;
             console.log = (...args) => {
                 const line = args.map(a => typeof a === 'string' ? a : JSON.stringify(a)).join(' ');
                 __denox_writeline(line);
             };
-            // Also capture direct stdout writes
-            const __origStdoutWrite = Deno.stdout.write;
-            const __decoder = new TextDecoder();
+
+            // Bridge Deno.stdin.read to __denox_readline channel
+            {
+                const encoder = new TextEncoder();
+                let pendingBuf = new Uint8Array(0);
+
+                const stdinProxy = {
+                    rid: -1,
+                    read: async (buf) => {
+                        if (pendingBuf.length > 0) {
+                            const n = Math.min(buf.length, pendingBuf.length);
+                            buf.set(pendingBuf.subarray(0, n));
+                            pendingBuf = pendingBuf.subarray(n);
+                            return n;
+                        }
+                        while (true) {
+                            const line = __denox_readline();
+                            if (line !== null) {
+                                const data = encoder.encode(line + "\n");
+                                const n = Math.min(buf.length, data.length);
+                                buf.set(data.subarray(0, n));
+                                if (data.length > n) {
+                                    pendingBuf = data.subarray(n);
+                                }
+                                return n;
+                            }
+                            await new Promise(r => setTimeout(r, 10));
+                        }
+                    },
+                    get readable() {
+                        return new ReadableStream({
+                            async pull(controller) {
+                                const buf = new Uint8Array(4096);
+                                const n = await stdinProxy.read(buf);
+                                if (n === null) {
+                                    controller.close();
+                                } else {
+                                    controller.enqueue(buf.subarray(0, n));
+                                }
+                            }
+                        });
+                    },
+                    isTerminal() { return false; },
+                    close() {},
+                    setRaw() {},
+                };
+                Object.defineProperty(Deno, 'stdin', {
+                    value: stdinProxy,
+                    writable: false,
+                    configurable: true,
+                });
+            }
         "#;
         let _ = worker.js_runtime.execute_script("<denox_run_io>", io_setup);
 
@@ -936,43 +1009,62 @@ fn runtime_run(
             return;
         }
 
-        // Run the event loop until stop signal or module completion
-        loop {
-            // Check for stop signal
-            match stop_rx.try_recv() {
-                Ok(()) => break,
-                Err(mpsc::TryRecvError::Disconnected) => break,
-                Err(mpsc::TryRecvError::Empty) => {}
+        // Run the event loop until completion or stop signal.
+        // Strategy: first try a quick run to handle simple scripts that
+        // complete immediately. If the event loop doesn't finish quickly,
+        // enter a long-running poll loop for servers/daemons.
+        let completed = tokio_rt.block_on(async {
+            tokio::time::timeout(
+                std::time::Duration::from_secs(1),
+                worker.run_event_loop(false),
+            )
+            .await
+        });
+
+        match completed {
+            Ok(Ok(())) => {
+                // Event loop completed — script finished naturally
             }
+            Ok(Err(e)) => {
+                let _ = stdout_tx.send(format!("Event loop error: {}", e));
+            }
+            Err(_timeout) => {
+                // Long-running script (server, daemon, etc.)
+                // Keep running until stop signal or event loop completion.
+                tokio_rt.block_on(async {
+                    let event_loop = worker.run_event_loop(false);
+                    tokio::pin!(event_loop);
 
-            // Run one tick of the event loop
-            let result = tokio_rt.block_on(async {
-                tokio::select! {
-                    result = worker.run_event_loop(false) => result,
-                    _ = tokio::time::sleep(std::time::Duration::from_millis(10)) => Ok(()),
-                }
-            });
+                    loop {
+                        match stop_rx.try_recv() {
+                            Ok(()) | Err(mpsc::TryRecvError::Disconnected) => break,
+                            Err(mpsc::TryRecvError::Empty) => {}
+                        }
 
-            match result {
-                Ok(()) => {
-                    // Event loop completed (module finished)
-                    // Check if we should keep running (e.g., server still listening)
-                    // For now, we check the stop signal and continue
-                    match stop_rx.try_recv() {
-                        Ok(()) | Err(mpsc::TryRecvError::Disconnected) => break,
-                        Err(mpsc::TryRecvError::Empty) => {
-                            // Brief sleep to avoid busy-waiting when event loop is idle
-                            std::thread::sleep(std::time::Duration::from_millis(10));
+                        tokio::select! {
+                            biased;
+                            result = &mut event_loop => {
+                                if let Err(e) = result {
+                                    let _ = stdout_tx.send(format!("Event loop error: {}", e));
+                                }
+                                break;
+                            }
+                            _ = tokio::time::sleep(std::time::Duration::from_millis(100)) => {
+                                continue;
+                            }
                         }
                     }
-                }
-                Err(e) => {
-                    let _ = stdout_tx.send(format!("Event loop error: {}", e));
-                    break;
-                }
+                });
             }
         }
 
+        // Reclaim the leaked stdout sender clone so the channel fully closes.
+        // SAFETY: stdout_raw_ptr was created by Box::into_raw above and is
+        // only accessed by V8 functions that can no longer run at this point.
+        unsafe { drop(Box::from_raw(stdout_raw_ptr)); }
+
+        // Drop the primary stdout sender to close the channel.
+        drop(stdout_tx);
         alive_clone.store(false, std::sync::atomic::Ordering::SeqCst);
     });
 
@@ -1047,7 +1139,7 @@ fn runtime_run_recv(
 ) -> Result<Option<String>, String> {
     let rx = resource.stdout_rx.lock().map_err(|_| "Lock poisoned".to_string())?;
 
-    match rx.recv_timeout(std::time::Duration::from_secs(5)) {
+    match rx.recv_timeout(std::time::Duration::from_secs(1)) {
         Ok(line) => Ok(Some(line)),
         Err(mpsc::RecvTimeoutError::Timeout) => Ok(None),
         Err(mpsc::RecvTimeoutError::Disconnected) => {
