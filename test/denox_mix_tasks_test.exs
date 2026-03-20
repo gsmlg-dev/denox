@@ -139,6 +139,67 @@ defmodule DenoxMixTasksTest do
     end
   end
 
+  describe "mix denox.run" do
+    test "raises when called with no arguments" do
+      Mix.Task.reenable("denox.run")
+
+      assert_raise Mix.Error, ~r/Usage: mix denox.run/, fn ->
+        Mix.Task.run("denox.run", [])
+      end
+    end
+
+    test "raises when only -- separator with no specifier before it" do
+      Mix.Task.reenable("denox.run")
+
+      # ["--", "extra"] → script_args=["extra"], positional=[] → specifier=nil → raises
+      assert_raise Mix.Error, ~r/Usage: mix denox.run/, fn ->
+        Mix.Task.run("denox.run", ["--", "extra"])
+      end
+    end
+
+    test "runs a local script successfully", %{tmp_dir: dir} do
+      Mix.Task.reenable("denox.run")
+      script = Path.join(dir, "noop.ts")
+      File.write!(script, "// empty\n")
+
+      Mix.Task.run("denox.run", ["file://#{script}"])
+    end
+
+    test "covers --allow-all flag alias", %{tmp_dir: dir} do
+      Mix.Task.reenable("denox.run")
+      script = Path.join(dir, "noop2.ts")
+      File.write!(script, "// noop\n")
+
+      Mix.Task.run("denox.run", ["--allow-all", "file://#{script}"])
+    end
+
+    test "covers -- separator with args passed to script", %{tmp_dir: dir} do
+      Mix.Task.reenable("denox.run")
+      script = Path.join(dir, "noop3.ts")
+      File.write!(script, "// noop\n")
+
+      Mix.Task.run("denox.run", ["file://#{script}", "--", "arg1"])
+    end
+
+    test "raises when deno script exits with non-zero status", %{tmp_dir: dir} do
+      Mix.Task.reenable("denox.run")
+      script = Path.join(dir, "fail.ts")
+      File.write!(script, "Deno.exit(1);")
+
+      assert_raise Mix.Error, ~r/exited with status 1/, fn ->
+        Mix.Task.run("denox.run", ["file://#{script}"])
+      end
+    end
+
+    test "covers --allow-net flag and passes it through", %{tmp_dir: dir} do
+      Mix.Task.reenable("denox.run")
+      script = Path.join(dir, "noop4.ts")
+      File.write!(script, "// noop\n")
+
+      Mix.Task.run("denox.run", ["--allow-net", "file://#{script}"])
+    end
+  end
+
   describe "mix denox.cli.install" do
     test "raises when no version is configured" do
       Mix.Task.reenable("denox.cli.install")
