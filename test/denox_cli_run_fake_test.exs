@@ -270,4 +270,47 @@ defmodule DenoxCLIRunFakeTest do
       Denox.CLI.Run.stop(pid)
     end
   end
+
+  describe "error paths" do
+    test "raises ArgumentError for unknown permission flag" do
+      write_fake_deno(~s[echo "ok"])
+      Process.flag(:trap_exit, true)
+
+      # permission_to_flag({:unknown_perm, true}) → line 182: raise ArgumentError
+      assert {:error, {%ArgumentError{message: msg}, _}} =
+               Denox.CLI.Run.start_link(file: "test.ts", permissions: [unknown_perm: true])
+
+      assert msg =~ "unknown permission flag"
+    end
+
+    test "raises ArgumentError for invalid env value type" do
+      write_fake_deno(~s[echo "ok"])
+      Process.flag(:trap_exit, true)
+
+      # env_to_charlist(123) → line 199: raise ArgumentError
+      assert {:error, {%ArgumentError{message: msg}, _}} =
+               Denox.CLI.Run.start_link(
+                 file: "test.ts",
+                 permissions: :all,
+                 env: %{"KEY" => 123}
+               )
+
+      assert msg =~ "env values must be atoms or binaries"
+    end
+  end
+
+  describe "noeol chunk handling" do
+    test "receives output without trailing newline as a dispatch_line call" do
+      # printf outputs without newline → port sends {:noeol, chunk} → line 100
+      write_fake_deno("printf 'no newline here'")
+
+      {:ok, pid} = Denox.CLI.Run.start_link(file: "test.ts", permissions: :all)
+      Denox.CLI.Run.subscribe(pid)
+
+      assert_receive {:denox_run_stdout, ^pid, line}, 5000
+      assert line =~ "no newline"
+
+      Denox.CLI.Run.stop(pid)
+    end
+  end
 end
