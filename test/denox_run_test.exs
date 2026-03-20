@@ -436,6 +436,23 @@ defmodule DenoxRunTest do
     end
   end
 
+  describe "os_pid/1" do
+    test "returns :not_available for NIF-backed runtime", %{tmp_dir: dir} do
+      script = write_script(dir, "long.ts", "await new Promise(r => setTimeout(r, 30000));")
+      {:ok, pid} = Denox.Run.start_link(file: script, permissions: :all)
+      assert {:error, :not_available} = Denox.Run.os_pid(pid)
+      Denox.Run.stop(pid)
+    end
+
+    test "returns :not_running after runtime exits", %{tmp_dir: dir} do
+      script = write_script(dir, "quick.ts", ~s[console.log("done");])
+      {:ok, pid} = Denox.Run.start_link(file: script, permissions: :all)
+      Denox.Run.subscribe(pid)
+      assert_receive {:denox_run_exit, ^pid, _}, 5000
+      assert {:error, :not_running} = Denox.Run.os_pid(pid)
+    end
+  end
+
   describe "start_link/1 error paths" do
     test "runtime exits on nonexistent file load failure", %{tmp_dir: _dir} do
       # A nonexistent file — NIF starts the runtime but module load fails.
