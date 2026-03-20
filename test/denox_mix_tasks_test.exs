@@ -21,6 +21,21 @@ defmodule DenoxMixTasksTest do
         Mix.Task.run("denox.add", ["zod"])
       end
     end
+
+    test "raises when Deps.add fails (invalid config path)" do
+      Mix.Task.reenable("denox.add")
+
+      # A config path in a non-existent directory causes Deps.add to return {:error, ...}
+      # which causes Mix.raise to be called
+      assert_raise Mix.Error, fn ->
+        Mix.Task.run("denox.add", [
+          "zod",
+          "npm:zod@^3.22",
+          "--config",
+          "/nonexistent_dir_abc/deno.json"
+        ])
+      end
+    end
   end
 
   describe "mix denox.remove" do
@@ -29,6 +44,15 @@ defmodule DenoxMixTasksTest do
 
       assert_raise Mix.Error, ~r/Usage: mix denox.remove/, fn ->
         Mix.Task.run("denox.remove", [])
+      end
+    end
+
+    test "raises when Deps.remove fails (config not found)" do
+      Mix.Task.reenable("denox.remove")
+
+      # Config doesn't exist → check_config returns error → Mix.raise
+      assert_raise Mix.Error, fn ->
+        Mix.Task.run("denox.remove", ["zod", "--config", "/nonexistent_dir/deno.json"])
       end
     end
   end

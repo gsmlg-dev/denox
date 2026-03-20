@@ -201,7 +201,10 @@ defmodule Denox.Deps do
     if File.exists?(config) do
       :ok
     else
-      File.write(config, Denox.JSON.encode_pretty!(%{"imports" => %{}}))
+      case File.write(config, Denox.JSON.encode_pretty!(%{"imports" => %{}})) do
+        :ok -> :ok
+        {:error, reason} -> {:error, "Failed to create #{config}: #{reason}"}
+      end
     end
   end
 
