@@ -143,5 +143,90 @@ defmodule DenoxTelemetryTest do
 
       :telemetry.detach(handler_id)
     end
+
+    test "call emits with type :call", %{rt: rt} do
+      pid = self()
+      handler_id = "test-call-#{System.unique_integer([:positive])}"
+
+      :telemetry.attach(
+        handler_id,
+        [:denox, :eval, :stop],
+        fn _event, _measurements, metadata, _config ->
+          send(pid, {:type, metadata.type})
+        end,
+        nil
+      )
+
+      Denox.exec(rt, "globalThis.add = (a, b) => a + b")
+      {:ok, "7"} = Denox.call(rt, "add", [3, 4])
+
+      assert_receive {:type, :call}
+
+      :telemetry.detach(handler_id)
+    end
+
+    test "eval_ts_async emits with type :eval_ts_async", %{rt: rt} do
+      pid = self()
+      handler_id = "test-eval-ts-async-#{System.unique_integer([:positive])}"
+
+      :telemetry.attach(
+        handler_id,
+        [:denox, :eval, :stop],
+        fn _event, _measurements, metadata, _config ->
+          send(pid, {:type, metadata.type})
+        end,
+        nil
+      )
+
+      {:ok, 99} = Task.await(Denox.eval_ts_async_decode(rt, "export default 99"))
+
+      assert_receive {:type, :eval_ts_async_decode}
+
+      :telemetry.detach(handler_id)
+    end
+
+    test "call_async_decode emits with type :call_async_decode", %{rt: rt} do
+      pid = self()
+      handler_id = "test-call-async-decode-#{System.unique_integer([:positive])}"
+
+      :telemetry.attach(
+        handler_id,
+        [:denox, :eval, :stop],
+        fn _event, _measurements, metadata, _config ->
+          send(pid, {:type, metadata.type})
+        end,
+        nil
+      )
+
+      Denox.exec(rt, "globalThis.double = async (n) => n * 2")
+      {:ok, 10} = Task.await(Denox.call_async_decode(rt, "double", [5]))
+
+      assert_receive {:type, :call_async_decode}
+
+      :telemetry.detach(handler_id)
+    end
+
+    test "eval_file_async emits with type :eval_file_async", %{rt: rt} do
+      pid = self()
+      handler_id = "test-eval-file-async-#{System.unique_integer([:positive])}"
+      path = Path.join(System.tmp_dir!(), "test_eval_file_async_#{System.unique_integer()}.js")
+      File.write!(path, "export default 42")
+
+      :telemetry.attach(
+        handler_id,
+        [:denox, :eval, :stop],
+        fn _event, _measurements, metadata, _config ->
+          send(pid, {:type, metadata.type})
+        end,
+        nil
+      )
+
+      {:ok, "42"} = Task.await(Denox.eval_file_async(rt, path))
+
+      assert_receive {:type, :eval_file_async}
+
+      :telemetry.detach(handler_id)
+      File.rm(path)
+    end
   end
 end
