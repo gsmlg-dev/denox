@@ -117,6 +117,26 @@ defmodule DenoxMixTasksTest do
         Mix.Task.run("denox.bundle", ["npm:zod@3.22"])
       end
     end
+
+    test "prints success when bundle succeeds with a local TS file", %{tmp_dir: dir} do
+      Mix.Task.reenable("denox.bundle")
+      entrypoint = Path.join(dir, "entry.ts")
+      output = Path.join(dir, "out.js")
+      File.write!(entrypoint, "export const x = 42;")
+
+      # deno bundle with a local file specifier should succeed
+      Mix.Task.run("denox.bundle", ["file://#{entrypoint}", output])
+      assert File.exists?(output)
+    end
+
+    test "raises when bundle fails (bad specifier)", %{tmp_dir: dir} do
+      Mix.Task.reenable("denox.bundle")
+      output = Path.join(dir, "out.js")
+
+      assert_raise Mix.Error, fn ->
+        Mix.Task.run("denox.bundle", ["file:///nonexistent_entry.ts", output])
+      end
+    end
   end
 
   describe "mix denox.cli.install" do
