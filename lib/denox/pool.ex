@@ -77,6 +77,12 @@ defmodule Denox.Pool do
     GenServer.call(pool, {:exec, code}, :infinity)
   end
 
+  @doc "Execute TypeScript code, ignoring the return value."
+  @spec exec_ts(pool(), String.t()) :: :ok | {:error, String.t()}
+  def exec_ts(pool, code) do
+    GenServer.call(pool, {:exec_ts, code}, :infinity)
+  end
+
   @doc "Call a named JavaScript function with arguments."
   @spec call(pool(), String.t(), list()) :: {:ok, String.t()} | {:error, String.t()}
   def call(pool, func_name, args \\ []) do
@@ -105,6 +111,12 @@ defmodule Denox.Pool do
   @spec call_decode(pool(), String.t(), list()) :: {:ok, term()} | {:error, term()}
   def call_decode(pool, func_name, args \\ []) do
     GenServer.call(pool, {:call_decode, func_name, args}, :infinity)
+  end
+
+  @doc "Call a named async JavaScript function and decode the JSON result, returning a Task."
+  @spec call_async_decode(pool(), String.t(), list()) :: Task.t()
+  def call_async_decode(pool, func_name, args \\ []) do
+    Task.async(fn -> GenServer.call(pool, {:call_async_decode, func_name, args}, :infinity) end)
   end
 
   @doc "Read and evaluate a JavaScript or TypeScript file."
@@ -185,6 +197,11 @@ defmodule Denox.Pool do
     {:reply, Denox.exec(rt, code), state}
   end
 
+  def handle_call({:exec_ts, code}, _from, state) do
+    {rt, state} = next_runtime(state)
+    {:reply, Denox.exec_ts(rt, code), state}
+  end
+
   def handle_call({:call, func_name, args}, _from, state) do
     {rt, state} = next_runtime(state)
     {:reply, Denox.call(rt, func_name, args), state}
@@ -210,6 +227,15 @@ defmodule Denox.Pool do
   def handle_call({:call_decode, func_name, args}, _from, state) do
     {rt, state} = next_runtime(state)
     {:reply, Denox.call_decode(rt, func_name, args), state}
+  end
+
+  def handle_call({:call_async_decode, func_name, args}, _from, state) do
+    {rt, state} = next_runtime(state)
+    args_json = Denox.JSON.encode!(args)
+    code = "export default await ((args) => #{func_name}(...args))(#{args_json})"
+    result = Denox.Native.eval_async(rt, code, false)
+    decoded = with {:ok, json} <- result, do: Denox.JSON.decode(json)
+    {:reply, decoded, state}
   end
 
   def handle_call({:eval_file, path, opts}, _from, state) do

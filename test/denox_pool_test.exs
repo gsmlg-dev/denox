@@ -37,6 +37,10 @@ defmodule DenoxPoolTest do
       assert :ok = Denox.Pool.exec(pool, "1 + 1")
     end
 
+    test "exec_ts ignores return value of TypeScript", %{pool: pool} do
+      assert :ok = Denox.Pool.exec_ts(pool, "const x: number = 1 + 1; x")
+    end
+
     test "eval_decode returns Elixir terms", %{pool: pool} do
       assert {:ok, %{"a" => 1}} = Denox.Pool.eval_decode(pool, "({a: 1})")
     end
@@ -51,6 +55,13 @@ defmodule DenoxPoolTest do
       start_supervised!({Denox.Pool, name: pool, size: 1})
       Denox.Pool.exec(pool, "globalThis.getObj = () => ({status: 'ok', count: 3})")
       assert {:ok, %{"status" => "ok", "count" => 3}} = Denox.Pool.call_decode(pool, "getObj")
+    end
+
+    test "call_async_decode invokes async function and decodes result" do
+      pool = :"test_pool_cad_#{:erlang.unique_integer([:positive])}"
+      start_supervised!({Denox.Pool, name: pool, size: 1})
+      Denox.Pool.exec(pool, "globalThis.asyncDouble = async (n) => n * 2")
+      assert {:ok, 84} = Denox.Pool.call_async_decode(pool, "asyncDouble", [42]) |> Task.await()
     end
 
     test "call invokes function" do
