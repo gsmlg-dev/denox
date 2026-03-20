@@ -148,8 +148,15 @@ defmodule Denox.Run.Base do
       end
 
       @impl true
-      def handle_info({:DOWN, _ref, :process, pid, _reason}, state) do
-        {:noreply, %{state | subscribers: List.delete(state.subscribers, pid)}}
+      def handle_info({:DOWN, ref, :process, pid, _reason}, state) do
+        # Remove from subscribers (monitor was set without storing ref)
+        subscribers = List.delete(state.subscribers, pid)
+
+        # Remove any recv_waiters from this pid (monitor ref stored in waiter tuple)
+        waiters =
+          :queue.filter(fn {_from, wref} -> wref != ref end, state.recv_waiters)
+
+        {:noreply, %{state | subscribers: subscribers, recv_waiters: waiters}}
       end
 
       def handle_info(_msg, state) do
@@ -179,7 +186,8 @@ defmodule Denox.Run.Base do
         end
 
         case :queue.out(state.recv_waiters) do
-          {{:value, from}, rest} ->
+          {{:value, {from, ref}}, rest} ->
+            Process.demonitor(ref, [:flush])
             GenServer.reply(from, {:ok, line})
             %{state | recv_waiters: rest}
 
@@ -214,7 +222,8 @@ defmodule Denox.Run.Base do
 
       defp drain_waiters(state) do
         case :queue.out(state.recv_waiters) do
-          {{:value, from}, rest} ->
+          {{:value, {from, ref}}, rest} ->
+            Process.demonitor(ref, [:flush])
             GenServer.reply(from, {:error, :closed})
             drain_waiters(%{state | recv_waiters: rest})
 
@@ -249,7 +258,9 @@ defmodule Denox.Run.Base do
         if state.exit_status != nil do
           {:reply, {:error, :closed}, state}
         else
-          waiters = :queue.in(from, state.recv_waiters)
+          {pid, _tag} = from
+          ref = Process.monitor(pid)
+          waiters = :queue.in({from, ref}, state.recv_waiters)
           {:noreply, %{state | recv_waiters: waiters}}
         end
     end

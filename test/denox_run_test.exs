@@ -213,6 +213,32 @@ defmodule DenoxRunTest do
       assert {:error, :closed} = Denox.Run.recv(pid, timeout: 1000)
     end
 
+    test "timeout does not consume a line from a subsequent recv", %{tmp_dir: dir} do
+      # A recv that times out should NOT steal the next arriving line.
+      # Regression test for stale recv_waiters after GenServer.call timeout.
+      script =
+        write_script(dir, "delayed.ts", """
+        const buf = new Uint8Array(1024);
+        await Deno.stdin.read(buf);
+        console.log("delayed_line");
+        """)
+
+      {:ok, pid} =
+        Denox.Run.start_link(
+          file: script,
+          permissions: :all
+        )
+
+      # This recv times out — no output yet
+      assert {:error, :timeout} = Denox.Run.recv(pid, timeout: 100)
+
+      # Trigger output
+      Denox.Run.send(pid, "go")
+
+      # The next recv should get the line, not the timed-out waiter
+      assert {:ok, "delayed_line"} = Denox.Run.recv(pid, timeout: 5000)
+    end
+
     test "buffers lines and returns them in order", %{tmp_dir: dir} do
       script =
         write_script(dir, "lines.ts", """
