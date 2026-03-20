@@ -146,4 +146,26 @@ defmodule DenoxPoolTest do
       assert Enum.sort(results) == Enum.sort(expected)
     end
   end
+
+  describe "pool error handling" do
+    setup do
+      pool = :"test_pool_err_#{:erlang.unique_integer([:positive])}"
+      start_supervised!({Denox.Pool, name: pool, size: 2})
+      %{pool: pool}
+    end
+
+    test "eval returns error for invalid JavaScript", %{pool: pool} do
+      assert {:error, msg} = Denox.Pool.eval(pool, "this is not valid {{{")
+      assert is_binary(msg)
+    end
+
+    test "pool remains usable after eval error", %{pool: pool} do
+      assert {:error, _} = Denox.Pool.eval(pool, "throw new Error('boom')")
+      assert {:ok, "42"} = Denox.Pool.eval(pool, "42")
+    end
+
+    test "eval_decode returns error for non-serializable result", %{pool: pool} do
+      assert {:error, _} = Denox.Pool.eval_decode(pool, "throw new Error('decode fail')")
+    end
+  end
 end

@@ -186,4 +186,7 @@ defmodule Denox.CLI.Run do
 
   defp env_to_charlist(value) when is_atom(value), do: Atom.to_charlist(value)
   defp env_to_charlist(value) when is_binary(value), do: String.to_charlist(value)
+
+  defp env_to_charlist(value),
+    do: raise(ArgumentError, "env values must be atoms or binaries, got: #{inspect(value)}")
 end
