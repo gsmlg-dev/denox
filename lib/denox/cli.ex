@@ -51,7 +51,7 @@ defmodule Denox.CLI do
         with {:ok, target} <- detect_target(),
              url = download_url(version, target),
              dest = cache_path(version),
-             _ = Logger.info("Downloading Deno #{version} for #{inspect(target)}..."),
+             _ = Logger.info("Downloading Deno #{version} for #{target_name(target)}..."),
              {:ok, zip_data} <- download(url),
              :ok <- extract_and_install(zip_data, dest) do
           Logger.info("Deno #{version} installed to #{dest}")
@@ -149,7 +149,16 @@ defmodule Denox.CLI do
 
     url_charlist = String.to_charlist(url)
 
-    case :httpc.request(:get, {url_charlist, []}, ssl_opts, body_format: :binary) do
+    result =
+      try do
+        :httpc.request(:get, {url_charlist, []}, ssl_opts, body_format: :binary)
+      rescue
+        e -> {:error, Exception.message(e)}
+      catch
+        :exit, reason -> {:error, {:exit, reason}}
+      end
+
+    case result do
       {:ok, {{_, status, _}, headers, _}} when status in [301, 302, 303, 307, 308] ->
         location =
           headers
@@ -170,24 +179,41 @@ defmodule Denox.CLI do
     end
   end
 
+  defp target_name({os, arch}) do
+    os_name =
+      case os do
+        :macos -> "macOS"
+        :linux -> "Linux"
+      end
+
+    "#{os_name} #{arch}"
+  end
+
   defp extract_and_install(zip_data, dest) do
     dest_dir = Path.dirname(dest)
-    File.mkdir_p!(dest_dir)
 
+    with :ok <- File.mkdir_p(dest_dir),
+         {:ok, files} <- safe_unzip(zip_data),
+         {:ok, binary} <- find_deno_in_zip(files),
+         :ok <- File.write(dest, binary),
+         :ok <- File.chmod(dest, 0o755) do
+      :ok
+    else
+      {:error, reason} -> {:error, "Failed to install deno binary: #{inspect(reason)}"}
+    end
+  end
+
+  defp safe_unzip(zip_data) do
     case :zip.unzip(zip_data, [:memory]) do
-      {:ok, files} ->
-        case List.keyfind(files, ~c"deno", 0) do
-          {_name, binary} ->
-            File.write!(dest, binary)
-            File.chmod!(dest, 0o755)
-            :ok
+      {:ok, files} -> {:ok, files}
+      {:error, reason} -> {:error, {:unzip, reason}}
+    end
+  end
 
-          nil ->
-            {:error, "deno binary not found in zip archive"}
-        end
-
-      {:error, reason} ->
-        {:error, "Failed to extract zip: #{inspect(reason)}"}
+  defp find_deno_in_zip(files) do
+    case List.keyfind(files, ~c"deno", 0) do
+      {_name, binary} -> {:ok, binary}
+      nil -> {:error, :deno_not_found_in_zip}
     end
   end
 end

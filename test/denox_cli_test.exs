@@ -76,5 +76,28 @@ defmodule DenoxCLITest do
       Application.delete_env(:denox, :cli)
       assert {:error, :not_configured} = Denox.CLI.install()
     end
+
+    @tag :network
+    test "returns error for non-existent version" do
+      Application.put_env(:denox, :cli, version: "0.0.1-nonexistent")
+
+      assert {:error, reason} = Denox.CLI.install()
+      assert is_binary(reason)
+    end
+  end
+
+  describe "installed?/0 with pre-existing binary" do
+    test "returns true when binary exists" do
+      version = "88.88.88"
+      Application.put_env(:denox, :cli, version: version)
+
+      path = Path.join(["_build", "denox_cli-#{version}", "deno"])
+      File.mkdir_p!(Path.dirname(path))
+      File.write!(path, "fake")
+
+      on_exit(fn -> File.rm_rf(Path.dirname(path)) end)
+
+      assert Denox.CLI.installed?()
+    end
   end
 end
