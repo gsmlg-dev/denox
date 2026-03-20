@@ -117,6 +117,28 @@ defmodule DenoxPoolTest do
     end
   end
 
+  describe "pool eval_file_async" do
+    @tag :tmp_dir
+    test "evaluates a file asynchronously from pool", %{tmp_dir: dir} do
+      pool = :"test_pool_file_async_#{:erlang.unique_integer([:positive])}"
+      start_supervised!({Denox.Pool, name: pool, size: 1})
+
+      path = Path.join(dir, "async_test.js")
+      File.write!(path, "export default await Promise.resolve(99)")
+      assert {:ok, "99"} = Task.await(Denox.Pool.eval_file_async(pool, path))
+    end
+
+    @tag :tmp_dir
+    test "eval_file_async_decode evaluates and decodes result", %{tmp_dir: dir} do
+      pool = :"test_pool_file_async_decode_#{:erlang.unique_integer([:positive])}"
+      start_supervised!({Denox.Pool, name: pool, size: 1})
+
+      path = Path.join(dir, "async_data.js")
+      File.write!(path, "export default await Promise.resolve([1, 2, 3])")
+      assert {:ok, [1, 2, 3]} = Task.await(Denox.Pool.eval_file_async_decode(pool, path))
+    end
+  end
+
   describe "pool load_npm" do
     @tag :tmp_dir
     test "loads bundled JS into all pool runtimes", %{tmp_dir: dir} do

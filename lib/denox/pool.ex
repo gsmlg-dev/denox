@@ -311,12 +311,33 @@ defmodule Denox.Pool do
 
   def handle_call({:eval_file_async, path, opts}, _from, state) do
     {rt, state} = next_runtime(state)
-    {:reply, Denox.eval_file(rt, path, opts), state}
+    transpile = Keyword.get(opts, :transpile, ts_extension?(path))
+
+    result =
+      case File.read(path) do
+        {:ok, code} ->
+          Denox.Telemetry.span(:eval_file_async, fn ->
+            Denox.Native.eval_async(rt, code, transpile)
+          end)
+
+        {:error, reason} ->
+          {:error, "Failed to read #{path}: #{reason}"}
+      end
+
+    {:reply, result, state}
   end
 
   def handle_call({:eval_file_async_decode, path, opts}, _from, state) do
     {rt, state} = next_runtime(state)
-    {:reply, Denox.eval_file_decode(rt, path, opts), state}
+    transpile = Keyword.get(opts, :transpile, ts_extension?(path))
+
+    result =
+      case File.read(path) do
+        {:ok, code} -> do_eval_file_async_decode(rt, code, transpile)
+        {:error, reason} -> {:error, "Failed to read #{path}: #{reason}"}
+      end
+
+    {:reply, result, state}
   end
 
   def handle_call({:load_npm, bundle_path}, _from, state) do
@@ -343,6 +364,18 @@ defmodule Denox.Pool do
   end
 
   # --- Private ---
+
+  defp do_eval_file_async_decode(rt, code, transpile) do
+    with {:ok, json} <-
+           Denox.Telemetry.span(:eval_file_async_decode, fn ->
+             Denox.Native.eval_async(rt, code, transpile)
+           end),
+         do: Denox.JSON.decode(json)
+  end
+
+  defp ts_extension?(path) do
+    Path.extname(path) in [".ts", ".tsx", ".mts", ".cts"]
+  end
 
   defp next_runtime(state) do
     rt = elem(state.runtimes, state.index)
