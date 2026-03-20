@@ -47,6 +47,56 @@ defmodule DenoxPoolTest do
       Denox.Pool.exec(pool, "globalThis.double = (n) => n * 2")
       assert {:ok, "10"} = Denox.Pool.call(pool, "double", [5])
     end
+
+    test "eval_ts_async transpiles and resolves", %{pool: pool} do
+      code = "const x: number = 77; export default await Promise.resolve(x)"
+
+      assert {:ok, "77"} = Task.await(Denox.Pool.eval_ts_async(pool, code))
+    end
+
+    test "call_async invokes async function" do
+      pool = :"test_pool_call_async_#{:erlang.unique_integer([:positive])}"
+      start_supervised!({Denox.Pool, name: pool, size: 1})
+      Denox.Pool.exec(pool, "globalThis.asyncTriple = async (n) => n * 3")
+      assert {:ok, "15"} = Task.await(Denox.Pool.call_async(pool, "asyncTriple", [5]))
+    end
+  end
+
+  describe "pool eval_file" do
+    @tag :tmp_dir
+    test "evaluates a file from pool", %{tmp_dir: dir} do
+      pool = :"test_pool_file_#{:erlang.unique_integer([:positive])}"
+      start_supervised!({Denox.Pool, name: pool, size: 1})
+
+      path = Path.join(dir, "pool_test.js")
+      File.write!(path, "1 + 2 + 3")
+      assert {:ok, "6"} = Denox.Pool.eval_file(pool, path)
+    end
+  end
+
+  describe "pool load_npm" do
+    @tag :tmp_dir
+    test "loads bundled JS into all pool runtimes", %{tmp_dir: dir} do
+      pool = :"test_pool_npm_#{:erlang.unique_integer([:positive])}"
+      start_supervised!({Denox.Pool, name: pool, size: 2})
+
+      bundle_path = Path.join(dir, "bundle.js")
+      File.write!(bundle_path, "globalThis.bundleLoaded = true;")
+
+      assert :ok = Denox.Pool.load_npm(pool, bundle_path)
+
+      # Both runtimes should have the global set
+      assert {:ok, "true"} = Denox.Pool.eval(pool, "globalThis.bundleLoaded")
+      assert {:ok, "true"} = Denox.Pool.eval(pool, "globalThis.bundleLoaded")
+    end
+
+    test "returns error for missing bundle" do
+      pool = :"test_pool_npm_err_#{:erlang.unique_integer([:positive])}"
+      start_supervised!({Denox.Pool, name: pool, size: 1})
+
+      assert {:error, msg} = Denox.Pool.load_npm(pool, "/nonexistent/bundle.js")
+      assert msg =~ "Failed to read bundle"
+    end
   end
 
   describe "pool round-robin" do
