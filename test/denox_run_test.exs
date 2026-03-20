@@ -212,6 +212,23 @@ defmodule DenoxRunTest do
       assert {:error, :closed} = Denox.Run.recv(pid, timeout: 1000)
     end
 
+    test "pending recv gets {:error, :closed} when process exits while waiting", %{tmp_dir: dir} do
+      # A process exits while a recv is pending — drain_waiters replies :closed.
+      script = write_script(dir, "exit_while_recv.ts", "// empty script, exits immediately")
+
+      {:ok, pid} =
+        Denox.Run.start_link(
+          file: script,
+          permissions: :all
+        )
+
+      # Start recv in a task — will block until output or exit
+      task = Task.async(fn -> Denox.Run.recv(pid, timeout: 5000) end)
+
+      # The script exits immediately, so drain_waiters replies :closed
+      assert {:error, :closed} = Task.await(task, 5000)
+    end
+
     test "timeout does not consume a line from a subsequent recv", %{tmp_dir: dir} do
       # A recv that times out should NOT steal the next arriving line.
       # Regression test for stale recv_waiters after GenServer.call timeout.
