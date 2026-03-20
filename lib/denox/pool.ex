@@ -143,6 +143,18 @@ defmodule Denox.Pool do
     GenServer.call(pool, {:eval_file_decode, path, opts}, :infinity)
   end
 
+  @doc "Read and evaluate a JavaScript or TypeScript file asynchronously, returning a Task."
+  @spec eval_file_async(pool(), String.t(), keyword()) :: Task.t()
+  def eval_file_async(pool, path, opts \\ []) do
+    Task.async(fn -> GenServer.call(pool, {:eval_file_async, path, opts}, :infinity) end)
+  end
+
+  @doc "Read and evaluate a JavaScript or TypeScript file asynchronously and decode the JSON result, returning a Task."
+  @spec eval_file_async_decode(pool(), String.t(), keyword()) :: Task.t()
+  def eval_file_async_decode(pool, path, opts \\ []) do
+    Task.async(fn -> GenServer.call(pool, {:eval_file_async_decode, path, opts}, :infinity) end)
+  end
+
   @doc "Load a bundled JS file into all runtimes in the pool."
   @spec load_npm(pool(), String.t()) :: :ok | {:error, String.t()}
   def load_npm(pool, bundle_path) do
@@ -293,6 +305,16 @@ defmodule Denox.Pool do
   end
 
   def handle_call({:eval_file_decode, path, opts}, _from, state) do
+    {rt, state} = next_runtime(state)
+    {:reply, Denox.eval_file_decode(rt, path, opts), state}
+  end
+
+  def handle_call({:eval_file_async, path, opts}, _from, state) do
+    {rt, state} = next_runtime(state)
+    {:reply, Denox.eval_file(rt, path, opts), state}
+  end
+
+  def handle_call({:eval_file_async_decode, path, opts}, _from, state) do
     {rt, state} = next_runtime(state)
     {:reply, Denox.eval_file_decode(rt, path, opts), state}
   end
