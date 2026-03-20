@@ -102,5 +102,46 @@ defmodule DenoxTelemetryTest do
 
       :telemetry.detach(handler_id)
     end
+
+    test "eval_async_decode emits with type :eval_async_decode", %{rt: rt} do
+      pid = self()
+      handler_id = "test-eval-async-decode-#{System.unique_integer([:positive])}"
+
+      :telemetry.attach(
+        handler_id,
+        [:denox, :eval, :stop],
+        fn _event, _measurements, metadata, _config ->
+          send(pid, {:type, metadata.type})
+        end,
+        nil
+      )
+
+      {:ok, 42} = Task.await(Denox.eval_async_decode(rt, "export default 42"))
+
+      assert_receive {:type, :eval_async_decode}
+
+      :telemetry.detach(handler_id)
+    end
+
+    test "call_async emits with type :call_async", %{rt: rt} do
+      pid = self()
+      handler_id = "test-call-async-#{System.unique_integer([:positive])}"
+
+      :telemetry.attach(
+        handler_id,
+        [:denox, :eval, :stop],
+        fn _event, _measurements, metadata, _config ->
+          send(pid, {:type, metadata.type})
+        end,
+        nil
+      )
+
+      Denox.exec(rt, "globalThis.mul = async (n) => n * 3")
+      {:ok, "15"} = Task.await(Denox.call_async(rt, "mul", [5]))
+
+      assert_receive {:type, :call_async}
+
+      :telemetry.detach(handler_id)
+    end
   end
 end

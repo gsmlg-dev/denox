@@ -258,7 +258,7 @@ defmodule Denox do
     code = "export default await ((args) => #{func_name}(...args))(#{args_json})"
 
     Task.async(fn ->
-      Native.eval_async(rt, code, false)
+      Denox.Telemetry.span(:call_async, fn -> Native.eval_async(rt, code, false) end)
     end)
   end
 
