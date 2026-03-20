@@ -8,7 +8,10 @@ defmodule Denox do
 
     * `[:denox, :eval, :start]` — emitted before evaluating code
       * Measurements: `%{system_time: integer}`
-      * Metadata: `%{type: :eval | :eval_ts | :eval_async | :eval_ts_async | :eval_module | :eval_file | :call}`
+      * Metadata: `%{type: atom}` — type is the function name atom (e.g. `:eval`, `:eval_ts`,
+        `:eval_async`, `:eval_ts_async`, `:eval_module`, `:eval_file`, `:call`,
+        `:call_async`, `:eval_decode`, `:eval_ts_decode`, `:call_decode`,
+        `:eval_async_decode`, `:eval_ts_async_decode`, `:call_async_decode`)
 
     * `[:denox, :eval, :stop]` — emitted after successful evaluation
       * Measurements: `%{duration: integer}` (native time units)
