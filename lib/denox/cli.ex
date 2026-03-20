@@ -127,7 +127,11 @@ defmodule Denox.CLI do
     "https://github.com/denoland/deno/releases/download/v#{version}/deno-#{target}.zip"
   end
 
-  defp download(url) do
+  defp download(url), do: download(url, 5)
+
+  defp download(_url, 0), do: {:error, "Too many redirects"}
+
+  defp download(url, redirects_left) do
     Application.ensure_all_started(:inets)
     Application.ensure_all_started(:ssl)
 
@@ -146,14 +150,14 @@ defmodule Denox.CLI do
     url_charlist = String.to_charlist(url)
 
     case :httpc.request(:get, {url_charlist, []}, ssl_opts, body_format: :binary) do
-      {:ok, {{_, 302, _}, headers, _}} ->
+      {:ok, {{_, status, _}, headers, _}} when status in [301, 302, 303, 307, 308] ->
         location =
           headers
           |> Enum.find(fn {k, _} -> String.downcase(to_string(k)) == "location" end)
           |> elem(1)
           |> to_string()
 
-        download(location)
+        download(location, redirects_left - 1)
 
       {:ok, {{_, 200, _}, _, body}} ->
         {:ok, body}
