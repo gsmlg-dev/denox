@@ -1,5 +1,6 @@
 defmodule DenoxCLITest do
-  use ExUnit.Case, async: true
+  # Application env is global state — cannot be safely mutated in async tests
+  use ExUnit.Case, async: false
 
   describe "configured_version/0" do
     test "returns nil when not configured" do
