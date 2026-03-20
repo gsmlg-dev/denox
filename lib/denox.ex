@@ -242,7 +242,7 @@ defmodule Denox do
   @spec call(runtime(), String.t(), list()) :: {:ok, String.t()} | {:error, String.t()}
   def call(rt, func_name, args \\ []) do
     args_json = Denox.JSON.encode!(args)
-    Native.call_function(rt, func_name, args_json)
+    Denox.Telemetry.span(:call, fn -> Native.call_function(rt, func_name, args_json) end)
   end
 
   @doc """
@@ -314,10 +314,7 @@ defmodule Denox do
   def call_async_decode(rt, func_name, args \\ []) do
     args_json = Denox.JSON.encode!(args)
     code = "export default await ((args) => #{func_name}(...args))(#{args_json})"
-
-    Task.async(fn ->
-      with {:ok, json} <- Native.eval_async(rt, code, false), do: Denox.JSON.decode(json)
-    end)
+    Task.async(fn -> do_call_async_decode(rt, code) end)
   end
 
   @doc """
@@ -348,13 +345,7 @@ defmodule Denox do
   @spec eval_file_async(runtime(), String.t(), keyword()) :: Task.t()
   def eval_file_async(rt, path, opts \\ []) do
     transpile = Keyword.get(opts, :transpile, ts_extension?(path))
-
-    Task.async(fn ->
-      case File.read(path) do
-        {:ok, code} -> Native.eval_async(rt, code, transpile)
-        {:error, reason} -> {:error, "Failed to read #{path}: #{reason}"}
-      end
-    end)
+    Task.async(fn -> do_eval_file_async(rt, path, transpile) end)
   end
 
   @doc """
@@ -379,6 +370,19 @@ defmodule Denox do
   end
 
   # --- Private ---
+
+  defp do_call_async_decode(rt, code) do
+    with {:ok, json} <-
+           Denox.Telemetry.span(:call_async_decode, fn -> Native.eval_async(rt, code, false) end),
+         do: Denox.JSON.decode(json)
+  end
+
+  defp do_eval_file_async(rt, path, transpile) do
+    case File.read(path) do
+      {:ok, code} -> Native.eval_async(rt, code, transpile)
+      {:error, reason} -> {:error, "Failed to read #{path}: #{reason}"}
+    end
+  end
 
   defp do_eval_async_decode(rt, code) do
     with {:ok, json} <-
