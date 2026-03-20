@@ -51,7 +51,7 @@ defmodule Denox.CLI do
         with {:ok, target} <- detect_target(),
              url = download_url(version, target),
              dest = cache_path(version),
-             _ = Logger.info("Downloading Deno #{version} for #{target}..."),
+             _ = Logger.info("Downloading Deno #{version} for #{inspect(target)}..."),
              {:ok, zip_data} <- download(url),
              :ok <- extract_and_install(zip_data, dest) do
           Logger.info("Deno #{version} installed to #{dest}")

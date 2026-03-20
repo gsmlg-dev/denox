@@ -64,9 +64,9 @@ defmodule DenoxCLIRunTest do
 
     test "returns error when CLI not configured" do
       Application.delete_env(:denox, :cli)
+      Process.flag(:trap_exit, true)
 
-      result = CLI.Run.start_link(file: "test.ts")
-      assert {:error, msg} = result
+      assert {:error, msg} = CLI.Run.start_link(file: "test.ts")
       assert msg =~ "Deno CLI not configured"
     end
   end
