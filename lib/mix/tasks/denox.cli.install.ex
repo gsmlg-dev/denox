@@ -18,28 +18,25 @@ defmodule Mix.Tasks.Denox.Cli.Install do
   def run(_args) do
     Mix.Task.run("app.config")
 
-    case Denox.CLI.configured_version() do
-      nil ->
-        Mix.raise("""
-        No Deno CLI version configured.
+    version = Denox.CLI.configured_version()
 
-        Add to your config:
+    unless version do
+      Mix.raise("""
+      No Deno CLI version configured.
 
-            config :denox, :cli, version: "2.1.4"
-        """)
+      Add to your config:
 
-      version ->
-        if Denox.CLI.installed?() do
-          Mix.shell().info("Deno #{version} is already installed.")
-        else
-          case Denox.CLI.install() do
-            :ok ->
-              Mix.shell().info("Deno #{version} installed successfully.")
+          config :denox, :cli, version: "2.1.4"
+      """)
+    end
 
-            {:error, reason} ->
-              Mix.raise("Failed to install Deno: #{inspect(reason)}")
-          end
-        end
+    if Denox.CLI.installed?() do
+      Mix.shell().info("Deno #{version} is already installed.")
+    else
+      case Denox.CLI.install() do
+        :ok -> Mix.shell().info("Deno #{version} installed successfully.")
+        {:error, reason} -> Mix.raise("Failed to install Deno: #{inspect(reason)}")
+      end
     end
   end
 end
