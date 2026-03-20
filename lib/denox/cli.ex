@@ -31,7 +31,7 @@ defmodule Denox.CLI do
         else
           case install() do
             :ok -> {:ok, path}
-            error -> error
+            {:error, _} = error -> error
           end
         end
     end

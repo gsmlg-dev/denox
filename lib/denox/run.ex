@@ -56,7 +56,15 @@ defmodule Denox.Run do
       |> Enum.into(%{}, fn {k, v} -> {to_string(k), to_string(v)} end)
       |> JSON.encode!()
 
-    case Denox.Native.runtime_run(specifier, permissions_json, env_vars_json, args, buffer_size) do
+    args_json = JSON.encode!(args)
+
+    case Denox.Native.runtime_run(
+           specifier,
+           permissions_json,
+           env_vars_json,
+           args_json,
+           buffer_size
+         ) do
       {:ok, resource} ->
         # Spawn a receiver task that loops runtime_run_recv on a dirty scheduler
         gen_server_pid = self()
@@ -76,7 +84,11 @@ defmodule Denox.Run do
 
   @impl Denox.Run.Base
   def send_backend(%{resource: resource}, data) do
-    Denox.Native.runtime_run_send(resource, data)
+    case Denox.Native.runtime_run_send(resource, data) do
+      {:ok, _} -> :ok
+      :ok -> :ok
+      {:error, _} = error -> error
+    end
   end
 
   @impl Denox.Run.Base
@@ -133,8 +145,8 @@ defmodule Denox.Run do
     end
   end
 
-  defp build_permissions_json(:all), do: ~s|{"mode":"allow_all"}|
-  defp build_permissions_json(nil), do: ~s|{"mode":"deny_all"}|
+  defp build_permissions_json(:all), do: JSON.encode!(%{"mode" => "allow_all"})
+  defp build_permissions_json(nil), do: JSON.encode!(%{"mode" => "deny_all"})
 
   defp build_permissions_json(perms) when is_list(perms) do
     granular =

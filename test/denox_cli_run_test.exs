@@ -1,6 +1,8 @@
 defmodule DenoxCLIRunTest do
   use ExUnit.Case, async: false
 
+  alias Denox.CLI
+
   # CLI Run tests require deno CLI to be configured and installed.
   @moduletag :deno_cli
   @moduletag :tmp_dir
@@ -12,7 +14,7 @@ defmodule DenoxCLIRunTest do
   end
 
   defp ensure_cli_configured do
-    case Denox.CLI.configured_version() do
+    case CLI.configured_version() do
       nil -> :skip
       _version -> :ok
     end
@@ -26,12 +28,12 @@ defmodule DenoxCLIRunTest do
       script = write_script(dir, "hello.ts", ~s[console.log("hello from cli");])
 
       {:ok, pid} =
-        Denox.CLI.Run.start_link(
+        CLI.Run.start_link(
           file: script,
           permissions: :all
         )
 
-      {:ok, line} = Denox.CLI.Run.recv(pid, timeout: 5000)
+      {:ok, line} = CLI.Run.recv(pid, timeout: 5000)
       assert line == "hello from cli"
     end
 
@@ -39,7 +41,7 @@ defmodule DenoxCLIRunTest do
       Process.flag(:trap_exit, true)
 
       assert {:error, {%ArgumentError{message: msg}, _}} =
-               Denox.CLI.Run.start_link([])
+               CLI.Run.start_link([])
 
       assert msg =~ "either :package or :file"
     end
@@ -49,7 +51,7 @@ defmodule DenoxCLIRunTest do
       original = Application.get_env(:denox, :cli)
       Application.delete_env(:denox, :cli)
 
-      result = Denox.CLI.Run.start_link(file: "test.ts")
+      result = CLI.Run.start_link(file: "test.ts")
       assert {:error, msg} = result
       assert msg =~ "Deno CLI not configured"
 
