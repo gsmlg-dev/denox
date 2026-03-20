@@ -94,14 +94,6 @@ defmodule Denox.CLI.Run do
     super(msg, state)
   end
 
-  # --- Public: os_pid ---
-
-  @doc "Get the OS PID of the subprocess."
-  @spec os_pid(GenServer.server()) :: {:ok, non_neg_integer()} | {:error, :not_running}
-  def os_pid(server) do
-    GenServer.call(server, :os_pid)
-  end
-
   # --- Private ---
 
   defp find_deno do

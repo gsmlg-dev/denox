@@ -105,6 +105,18 @@ defmodule Denox.Run.Base do
         GenServer.call(server, :alive?)
       end
 
+      @doc """
+      Return the OS PID of the process, if available.
+
+      Returns `{:ok, pid}` for CLI-backed runtimes or `{:error, :not_available}`
+      for NIF-backed runtimes where no separate OS process exists.
+      """
+      @spec os_pid(GenServer.server()) ::
+              {:ok, non_neg_integer()} | {:error, :not_available | :not_running}
+      def os_pid(server) do
+        GenServer.call(server, :os_pid)
+      end
+
       @doc "Stop the runtime."
       @spec stop(GenServer.server()) :: :ok
       def stop(server) do
