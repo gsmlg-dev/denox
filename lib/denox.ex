@@ -355,7 +355,6 @@ defmodule Denox do
         {:ok, code} -> Native.eval_async(rt, code, transpile)
         {:error, reason} -> {:error, "Failed to read #{path}: #{reason}"}
       end
-      |> await(:infinity)
     end)
   end
 

@@ -17,26 +17,31 @@ defmodule Denox.JSON do
   """
 
   @doc false
+  @spec module() :: module()
   def module do
     Application.get_env(:denox, :json_module, JSON)
   end
 
   @doc false
+  @spec encode!(term()) :: String.t()
   def encode!(term) do
     module().encode!(term)
   end
 
   @doc false
+  @spec decode(String.t()) :: {:ok, term()} | {:error, term()}
   def decode(binary) do
     module().decode(binary)
   end
 
   @doc false
+  @spec decode!(String.t()) :: term()
   def decode!(binary) do
     module().decode!(binary)
   end
 
   @doc false
+  @spec encode_pretty!(term()) :: String.t()
   def encode_pretty!(term) do
     case module() do
       Jason -> Jason.encode!(term, pretty: true)
