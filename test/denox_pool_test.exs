@@ -71,6 +71,27 @@ defmodule DenoxPoolTest do
       assert {:ok, "10"} = Denox.Pool.call(pool, "double", [5])
     end
 
+    test "call invokes function with default empty args" do
+      pool = :"test_pool_call_noargs_#{:erlang.unique_integer([:positive])}"
+      start_supervised!({Denox.Pool, name: pool, size: 1})
+      Denox.Pool.exec(pool, "globalThis.greet = () => 'hello'")
+      assert {:ok, "\"hello\""} = Denox.Pool.call(pool, "greet")
+    end
+
+    test "call_async invokes function with default empty args" do
+      pool = :"test_pool_ca_noargs_#{:erlang.unique_integer([:positive])}"
+      start_supervised!({Denox.Pool, name: pool, size: 1})
+      Denox.Pool.exec(pool, "globalThis.ping = async () => 'pong'")
+      assert {:ok, "\"pong\""} = Task.await(Denox.Pool.call_async(pool, "ping"))
+    end
+
+    test "call_async_decode invokes function with default empty args" do
+      pool = :"test_pool_cad_noargs_#{:erlang.unique_integer([:positive])}"
+      start_supervised!({Denox.Pool, name: pool, size: 1})
+      Denox.Pool.exec(pool, "globalThis.count = async () => 42")
+      assert {:ok, 42} = Task.await(Denox.Pool.call_async_decode(pool, "count"))
+    end
+
     test "eval_async_decode evaluates and decodes", %{pool: pool} do
       assert {:ok, %{"x" => 1}} =
                Denox.Pool.eval_async_decode(pool, "export default {x: 1}") |> Task.await()
@@ -136,6 +157,24 @@ defmodule DenoxPoolTest do
       path = Path.join(dir, "async_data.js")
       File.write!(path, "export default await Promise.resolve([1, 2, 3])")
       assert {:ok, [1, 2, 3]} = Task.await(Denox.Pool.eval_file_async_decode(pool, path))
+    end
+
+    test "eval_file_async returns error for missing file" do
+      pool = :"test_pool_fa_err_#{:erlang.unique_integer([:positive])}"
+      start_supervised!({Denox.Pool, name: pool, size: 1})
+
+      assert {:error, msg} = Task.await(Denox.Pool.eval_file_async(pool, "/nonexistent.js"))
+      assert msg =~ "Failed to read"
+    end
+
+    test "eval_file_async_decode returns error for missing file" do
+      pool = :"test_pool_fad_err_#{:erlang.unique_integer([:positive])}"
+      start_supervised!({Denox.Pool, name: pool, size: 1})
+
+      assert {:error, msg} =
+               Task.await(Denox.Pool.eval_file_async_decode(pool, "/nonexistent.js"))
+
+      assert msg =~ "Failed to read"
     end
   end
 
