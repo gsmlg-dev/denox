@@ -20,6 +20,20 @@ defmodule DenoxCLIRunTest do
     end
   end
 
+  setup do
+    original = Application.get_env(:denox, :cli)
+
+    on_exit(fn ->
+      if original do
+        Application.put_env(:denox, :cli, original)
+      else
+        Application.delete_env(:denox, :cli)
+      end
+    end)
+
+    :ok
+  end
+
   describe "start_link/1" do
     test "runs a simple script and captures output", %{tmp_dir: dir} do
       # Skip when Denox.CLI is not configured in config (set :cli, version: "x.y.z")
@@ -49,19 +63,11 @@ defmodule DenoxCLIRunTest do
     end
 
     test "returns error when CLI not configured" do
-      Process.flag(:trap_exit, true)
-      original = Application.get_env(:denox, :cli)
       Application.delete_env(:denox, :cli)
 
       result = CLI.Run.start_link(file: "test.ts")
       assert {:error, msg} = result
       assert msg =~ "Deno CLI not configured"
-
-      if original do
-        Application.put_env(:denox, :cli, original)
-      else
-        Application.delete_env(:denox, :cli)
-      end
     end
   end
 end
