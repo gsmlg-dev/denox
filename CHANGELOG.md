@@ -5,7 +5,7 @@
 - **`Denox.Run` NIF backend** — replaced subprocess `deno run` with an in-process `deno_runtime` MainWorker via Rustler NIF. No external `deno` binary required for `Denox.Run`. Supports stdin/stdout streaming, telemetry, OTP supervision, and all permission modes.
 - **`Denox.CLI` binary manager** — downloads and caches the official Deno binary for the current platform (macOS/Linux, x86_64/aarch64). Configure with `config :denox, :cli, version: "2.x.x"` and run `mix denox.cli.install`.
 - **`Denox.CLI.Run`** — subprocess-based runner using the bundled CLI binary; same API as `Denox.Run` but spawns a `deno` process per instance. Useful when full CLI features are needed.
-- **`Denox.Run.Base` behaviour** — shared GenServer dispatch logic extracted as a `__using__` macro behaviour, supporting both NIF and CLI backends with a common `send/recv/subscribe/unsubscribe/alive?/stop` API.
+- **Shared `Run.Base` behaviour** — shared GenServer dispatch logic extracted as a `__using__` macro behaviour, supporting both NIF and CLI backends with a common `send/recv/subscribe/unsubscribe/alive?/stop` API.
 - **Granular permissions** — both `Denox.Run` and `Denox.CLI.Run` support `:all`, `nil`/`:none`, or a keyword list of `allow_*`/`deny_*` permission flags.
 - **Telemetry** — `[:denox, :run, :start]`, `[:denox, :run, :stop]`, `[:denox, :run, :recv]` events emitted for all backends.
 
