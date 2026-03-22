@@ -403,6 +403,58 @@ defmodule DenoxGlobalsTest do
     end
   end
 
+  describe "Blob" do
+    test "Blob constructor creates a blob with text", %{rt: rt} do
+      code = """
+      var b = new Blob(["hello", " ", "world"], {type: "text/plain"});
+      b.size + " " + b.type
+      """
+
+      assert {:ok, ~s("11 text/plain")} = Denox.eval(rt, code)
+    end
+
+    test "Blob.text() reads blob content", %{rt: rt} do
+      code = """
+      export default await new Blob(["hello"]).text();
+      """
+
+      task = Denox.eval_async(rt, code)
+      assert {:ok, ~s("hello")} = Task.await(task, 5000)
+    end
+
+    test "Blob.arrayBuffer() returns ArrayBuffer", %{rt: rt} do
+      code = """
+      export default await (async () => {
+        const buf = await new Blob(["hi"]).arrayBuffer();
+        return buf instanceof ArrayBuffer && buf.byteLength === 2;
+      })();
+      """
+
+      task = Denox.eval_async(rt, code)
+      assert {:ok, "true"} = Task.await(task, 5000)
+    end
+
+    test "Blob slice works", %{rt: rt} do
+      code = """
+      export default await new Blob(["hello world"]).slice(0, 5).text();
+      """
+
+      task = Denox.eval_async(rt, code)
+      assert {:ok, ~s("hello")} = Task.await(task, 5000)
+    end
+  end
+
+  describe "MessageChannel / MessagePort" do
+    test "MessageChannel exists and has port1/port2", %{rt: rt} do
+      code = """
+      const ch = new MessageChannel();
+      typeof ch.port1 + " " + typeof ch.port2
+      """
+
+      assert {:ok, ~s("object object")} = Denox.eval(rt, code)
+    end
+  end
+
   describe "Deno namespace" do
     test "Deno object is available", %{rt: rt} do
       assert {:ok, ~s("object")} = Denox.eval(rt, "typeof Deno")
