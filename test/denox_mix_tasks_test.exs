@@ -243,6 +243,35 @@ defmodule DenoxMixTasksTest do
       Mix.Task.run("denox.run", ["file://#{script}"])
     end
 
+    test "stdin_loop forwards data to port (covers lines 119-126)", %{tmp_dir: dir} do
+      Mix.Task.reenable("denox.run")
+
+      # Script reads one line from stdin and echoes it, then exits.
+      script = Path.join(dir, "stdin_echo.ts")
+
+      File.write!(script, """
+      const buf = new Uint8Array(1024);
+      const n = await Deno.stdin.read(buf);
+      const line = new TextDecoder().decode(buf.subarray(0, n ?? 0)).trim();
+      console.log("echo:" + line);
+      """)
+
+      # Redirect the group leader to a StringIO device containing one line of input.
+      # The stdin_task spawned by Mix.Tasks.Denox.Run inherits this group leader,
+      # so IO.read(:stdio, :line) reads from StringIO instead of blocking on terminal.
+      # Sequence: IO.read→"hello\n" (line 119), Port.command (121), recurse (126), IO.read→:eof→:ok
+      {:ok, sio} = StringIO.open("hello\n")
+      original_gl = Process.group_leader()
+      Process.group_leader(self(), sio)
+
+      try do
+        Mix.Task.run("denox.run", ["file://#{script}"])
+      after
+        Process.group_leader(self(), original_gl)
+        StringIO.close(sio)
+      end
+    end
+
     test "covers @ prefix specifier → npm: resolution", %{tmp_dir: _dir} do
       Mix.Task.reenable("denox.run")
       # "@scope/pkg" → "npm:@scope/pkg" (line 151) → deno fails → Mix.raise
