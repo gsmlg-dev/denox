@@ -231,4 +231,116 @@ defmodule DenoxAsyncTest do
       assert {:error, _} = Task.await(task)
     end
   end
+
+  describe "Promise combinators" do
+    test "Promise.all resolves when all promises resolve", %{rt: rt} do
+      code = """
+      export default await Promise.all([
+        Promise.resolve(1),
+        Promise.resolve(2),
+        Promise.resolve(3)
+      ]);
+      """
+
+      task = Denox.eval_async(rt, code)
+      assert {:ok, "[1,2,3]"} = Task.await(task, 5000)
+    end
+
+    test "Promise.all rejects if any promise rejects", %{rt: rt} do
+      code = """
+      export default await Promise.all([
+        Promise.resolve(1),
+        Promise.reject(new Error("fail")),
+        Promise.resolve(3)
+      ]);
+      """
+
+      task = Denox.eval_async(rt, code)
+      assert {:error, msg} = Task.await(task, 5000)
+      assert msg =~ "fail"
+    end
+
+    test "Promise.race resolves with the first settled value", %{rt: rt} do
+      code = """
+      export default await Promise.race([
+        new Promise(resolve => setTimeout(() => resolve("slow"), 50)),
+        Promise.resolve("fast")
+      ]);
+      """
+
+      task = Denox.eval_async(rt, code)
+      assert {:ok, ~s("fast")} = Task.await(task, 5000)
+    end
+
+    test "Promise.allSettled returns all outcomes", %{rt: rt} do
+      code = """
+      const results = await Promise.allSettled([
+        Promise.resolve(42),
+        Promise.reject(new Error("oops"))
+      ]);
+      export default results.map(r => r.status).join(",");
+      """
+
+      task = Denox.eval_async(rt, code)
+      assert {:ok, ~s("fulfilled,rejected")} = Task.await(task, 5000)
+    end
+
+    test "Promise.any resolves with first fulfilled", %{rt: rt} do
+      code = """
+      export default await Promise.any([
+        Promise.reject(new Error("first")),
+        Promise.resolve("winner"),
+        Promise.resolve("also ok")
+      ]);
+      """
+
+      task = Denox.eval_async(rt, code)
+      assert {:ok, ~s("winner")} = Task.await(task, 5000)
+    end
+  end
+
+  describe "setTimeout / setInterval" do
+    test "setTimeout resolves after delay", %{rt: rt} do
+      code = """
+      export default await new Promise(resolve => {
+        setTimeout(() => resolve("done"), 10);
+      });
+      """
+
+      task = Denox.eval_async(rt, code)
+      assert {:ok, ~s("done")} = Task.await(task, 5000)
+    end
+
+    test "clearTimeout cancels a pending timeout", %{rt: rt} do
+      code = """
+      export default await new Promise(resolve => {
+        let called = false;
+        const id = setTimeout(() => { called = true; }, 50);
+        clearTimeout(id);
+        setTimeout(() => resolve(called), 100);
+      });
+      """
+
+      task = Denox.eval_async(rt, code)
+      assert {:ok, "false"} = Task.await(task, 5000)
+    end
+
+    test "setInterval fires multiple times", %{rt: rt} do
+      code = """
+      export default await new Promise(resolve => {
+        let count = 0;
+        const id = setInterval(() => {
+          count++;
+          if (count >= 3) {
+            clearInterval(id);
+            resolve(count);
+          }
+        }, 5);
+      });
+      """
+
+      task = Denox.eval_async(rt, code)
+      assert {:ok, "3"} = Task.await(task, 5000)
+    end
+  end
 end
