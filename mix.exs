@@ -64,7 +64,7 @@ defmodule Denox.MixProject do
         Runner: [Denox.Run, Denox.CLI.Run],
         CLI: [Denox.CLI],
         Dependencies: [Denox.Deps, Denox.Npm],
-        Internal: [Denox.Native, Denox.Run.Base]
+        Internal: [Denox.Native, Denox.Run.Base, Denox.JSON, Denox.Telemetry]
       ]
     ]
   end
