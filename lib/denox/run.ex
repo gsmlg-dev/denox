@@ -5,13 +5,24 @@ defmodule Denox.Run do
   Uses an in-process `deno_runtime` MainWorker (no external `deno` binary
   required) wrapped in a GenServer with bidirectional stdio and OTP supervision.
 
+  ## Supported Specifiers
+
+  `Denox.Run` uses a built-in module loader that supports:
+
+    - **Local files** — `file: "path/to/script.ts"` (absolute or relative path)
+    - **HTTPS/HTTP modules** — `package: "https://deno.land/x/pkg/mod.ts"`
+
+  **`npm:` and `jsr:` packages are not supported** by the NIF backend.
+  The NIF module loader has no Node.js resolver or npm registry client.
+  For npm/jsr packages, use `Denox.CLI.Run` which delegates to the bundled
+  Deno binary that handles all module schemes natively.
+
   ## Examples
 
-      # Run an MCP server
+      # Run a local script
       {:ok, pid} = Denox.Run.start_link(
-        package: "@modelcontextprotocol/server-github",
-        permissions: :all,
-        env: %{"GITHUB_PERSONAL_ACCESS_TOKEN" => token}
+        file: "scripts/server.ts",
+        permissions: :all
       )
 
       # Send JSON-RPC via stdin
@@ -24,10 +35,17 @@ defmodule Denox.Run do
       Denox.Run.subscribe(pid)
       # => receives {:denox_run_stdout, ^pid, line} messages
 
-      # Run a local script
+      # Load an HTTPS module
       {:ok, pid} = Denox.Run.start_link(
-        file: "scripts/server.ts",
+        package: "https://deno.land/x/cowsay/mod.ts",
         permissions: :all
+      )
+
+      # For npm/jsr packages, use Denox.CLI.Run instead:
+      {:ok, pid} = Denox.CLI.Run.start_link(
+        package: "@modelcontextprotocol/server-github",
+        permissions: :all,
+        env: %{"GITHUB_PERSONAL_ACCESS_TOKEN" => token}
       )
 
       # Stop the process

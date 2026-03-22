@@ -33,6 +33,19 @@ defmodule DenoxRunTest do
       assert msg =~ "either :package or :file"
     end
 
+    test "npm: specifier is unsupported — fails with unsupported scheme error" do
+      # Denox.Run uses TsModuleLoader which only handles file://, https://, http://.
+      # npm: and jsr: packages require Denox.CLI.Run (bundled deno binary).
+      {:ok, pid} =
+        Denox.Run.start_link(
+          package: "npm:cowsay",
+          permissions: :all
+        )
+
+      {:ok, line} = Denox.Run.recv(pid, timeout: 5000)
+      assert line =~ "Unsupported scheme" or line =~ "Error loading module"
+    end
+
     test "runs with granular permissions", %{tmp_dir: dir} do
       script = write_script(dir, "env.ts", ~s[console.log(typeof Deno.env);])
 
