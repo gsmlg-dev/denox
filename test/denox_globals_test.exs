@@ -469,6 +469,103 @@ defmodule DenoxGlobalsTest do
     end
   end
 
+  describe "Web Streams API" do
+    test "ReadableStream constructor works", %{rt: rt} do
+      code = """
+      export default await (async () => {
+        const stream = new ReadableStream({
+          start(controller) {
+            controller.enqueue("a");
+            controller.enqueue("b");
+            controller.close();
+          }
+        });
+        const reader = stream.getReader();
+        const results = [];
+        let done = false;
+        while (!done) {
+          const { value, done: d } = await reader.read();
+          if (!d) results.push(value);
+          done = d;
+        }
+        return results.join(",");
+      })();
+      """
+
+      task = Denox.eval_async(rt, code)
+      assert {:ok, ~s("a,b")} = Task.await(task, 5000)
+    end
+
+    test "ReadableStream.from creates stream from iterable", %{rt: rt} do
+      code = """
+      export default await (async () => {
+        const stream = ReadableStream.from([1, 2, 3]);
+        const chunks = [];
+        for await (const chunk of stream) {
+          chunks.push(chunk);
+        }
+        return chunks.join(",");
+      })();
+      """
+
+      task = Denox.eval_async(rt, code)
+      assert {:ok, ~s("1,2,3")} = Task.await(task, 5000)
+    end
+
+    test "TransformStream transforms data", %{rt: rt} do
+      code = """
+      export default await (async () => {
+        const transform = new TransformStream({
+          transform(chunk, controller) {
+            controller.enqueue(chunk.toUpperCase());
+          }
+        });
+        const writer = transform.writable.getWriter();
+        const reader = transform.readable.getReader();
+        writer.write("hello");
+        writer.close();
+        const { value } = await reader.read();
+        return value;
+      })();
+      """
+
+      task = Denox.eval_async(rt, code)
+      assert {:ok, ~s("HELLO")} = Task.await(task, 5000)
+    end
+
+    test "TextEncoderStream encodes to bytes", %{rt: rt} do
+      code = """
+      export default await (async () => {
+        const stream = ReadableStream.from(["hello"]);
+        const encoded = stream.pipeThrough(new TextEncoderStream());
+        const reader = encoded.getReader();
+        const { value } = await reader.read();
+        return value instanceof Uint8Array && value.length > 0;
+      })();
+      """
+
+      task = Denox.eval_async(rt, code)
+      assert {:ok, "true"} = Task.await(task, 5000)
+    end
+
+    test "TextDecoderStream decodes bytes to string", %{rt: rt} do
+      code = """
+      export default await (async () => {
+        const encoder = new TextEncoder();
+        const bytes = encoder.encode("world");
+        const stream = ReadableStream.from([bytes]);
+        const decoded = stream.pipeThrough(new TextDecoderStream());
+        const reader = decoded.getReader();
+        const { value } = await reader.read();
+        return value;
+      })();
+      """
+
+      task = Denox.eval_async(rt, code)
+      assert {:ok, ~s("world")} = Task.await(task, 5000)
+    end
+  end
+
   describe "Deno permissions enforcement" do
     test "deny_all mode blocks file reads" do
       {:ok, rt} = Denox.runtime(permissions: :none)
