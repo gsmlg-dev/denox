@@ -1,3 +1,15 @@
+## Unreleased
+
+### Improvements
+
+- `Denox.Run` documentation now explicitly states that `npm:` and `jsr:` specifiers
+  are **not supported** by the NIF backend (TsModuleLoader only handles `file://`,
+  `https://`, and `http://` schemes). Users are directed to `Denox.CLI.Run` for
+  npm/jsr packages.
+- Test coverage expanded: Web Streams API (`ReadableStream`, `TransformStream`,
+  `TextEncoderStream`, `TextDecoderStream`), `Blob`, `MessageChannel`, Promise
+  combinators (`Promise.all/race/allSettled/any`), `setTimeout`/`setInterval`.
+
 ## v0.5.0 — 2026-03-22
 
 ### Features
