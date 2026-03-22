@@ -215,7 +215,11 @@ defmodule Denox.Deps do
         :ok
       else
         updated = Map.put(json, "vendor", true)
-        File.write(config, Denox.JSON.encode_pretty!(updated))
+
+        case File.write(config, Denox.JSON.encode_pretty!(updated)) do
+          :ok -> :ok
+          {:error, reason} -> {:error, "Failed to write #{config}: #{reason}"}
+        end
       end
     else
       _ -> {:error, "Failed to update #{config}"}
