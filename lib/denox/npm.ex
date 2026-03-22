@@ -41,9 +41,8 @@ defmodule Denox.Npm do
   """
   @spec bundle(String.t(), String.t(), keyword()) :: :ok | {:error, String.t()}
   def bundle(specifier, output_path, opts \\ []) do
-    with {:ok, deno_path} <- find_deno() do
-      File.mkdir_p!(Path.dirname(output_path))
-
+    with {:ok, deno_path} <- find_deno(),
+         :ok <- File.mkdir_p(Path.dirname(output_path)) do
       args = build_bundle_args(specifier, output_path, opts)
 
       case System.cmd(deno_path, args, stderr_to_stdout: true) do
@@ -100,8 +99,8 @@ defmodule Denox.Npm do
   @spec bundle_file(String.t(), String.t(), keyword()) :: :ok | {:error, String.t()}
   def bundle_file(entrypoint, output_path, opts \\ []) do
     with {:ok, deno_path} <- find_deno(),
-         :ok <- check_entrypoint(entrypoint) do
-      File.mkdir_p!(Path.dirname(output_path))
+         :ok <- check_entrypoint(entrypoint),
+         :ok <- File.mkdir_p(Path.dirname(output_path)) do
       args = build_bundle_args(entrypoint, output_path, opts)
 
       case System.cmd(deno_path, args, stderr_to_stdout: true) do
