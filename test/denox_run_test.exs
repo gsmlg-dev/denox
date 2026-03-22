@@ -629,6 +629,24 @@ defmodule DenoxRunTest do
     end
   end
 
+  describe "receiver_loop polling (covers nil/alive recursion)" do
+    @tag :slow
+    test "receiver_loop recurses after recv timeout while runtime is still alive", %{tmp_dir: dir} do
+      # Script sleeps for 3s with no output; this forces the NIF recv_timeout (1s) to fire
+      # and return {:ok, nil}, then receiver_loop checks alive? (true) and recurses (line 157).
+      script =
+        write_script(dir, "sleep_no_output.ts", "await new Promise(r => setTimeout(r, 3000));")
+
+      {:ok, pid} = Denox.Run.start_link(file: script, permissions: :all)
+
+      # Wait long enough for at least one 1-second recv_timeout cycle to fire
+      Process.sleep(1300)
+
+      assert Denox.Run.alive?(pid)
+      Denox.Run.stop(pid)
+    end
+  end
+
   describe "recv waiter cleanup on caller death" do
     test "DOWN for a recv waiter cancels the timer and cleans up state", %{tmp_dir: dir} do
       # A script that blocks on stdin forever — no output will arrive.
