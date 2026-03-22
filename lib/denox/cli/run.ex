@@ -6,6 +6,13 @@ defmodule Denox.CLI.Run do
   instead of the NIF runtime. Primarily useful for testing or when
   full CLI features (deno fmt, deno lint) are needed.
 
+  ## Additional Options
+
+  All options from `Denox.Run` are supported. Additionally:
+
+    - `:deno_flags` - extra flags inserted after `deno run` and before the
+      specifier (e.g. `["--no-check", "--unstable-kv"]`)
+
   ## Examples
 
       {:ok, pid} = Denox.CLI.Run.start_link(

@@ -67,7 +67,15 @@ defmodule Denox.Run.Base do
         GenServer.start_link(__MODULE__, opts, gen_opts)
       end
 
-      @doc "Send a line to stdin."
+      @doc """
+      Send data to stdin of the running process.
+
+      A newline (`\\n`) is automatically appended if `data` does not
+      already end with one.
+
+      Returns `:ok` on success, or `{:error, :closed}` if the process
+      has already exited.
+      """
       @spec send(GenServer.server(), String.t()) :: :ok | {:error, term()}
       def send(server, data) do
         GenServer.call(server, {:send, data})

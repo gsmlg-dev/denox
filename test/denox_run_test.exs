@@ -95,6 +95,38 @@ defmodule DenoxRunTest do
       {:ok, line} = Denox.Run.recv(pid, timeout: 5000)
       assert line == "echo:test_input"
     end
+
+    test "auto-appends newline when data does not end with one", %{tmp_dir: dir} do
+      script =
+        write_script(dir, "readline.ts", """
+        const buf = new Uint8Array(1024);
+        const n = await Deno.stdin.read(buf);
+        const line = new TextDecoder().decode(buf.subarray(0, n!)).trim();
+        console.log("got:" + line);
+        """)
+
+      {:ok, pid} =
+        Denox.Run.start_link(
+          file: script,
+          permissions: :all
+        )
+
+      # Send without trailing newline — send/2 appends it automatically
+      :ok = Denox.Run.send(pid, "no_newline_here")
+      {:ok, line} = Denox.Run.recv(pid, timeout: 5000)
+      assert line == "got:no_newline_here"
+    end
+
+    test "returns {:error, :closed} after process exits", %{tmp_dir: dir} do
+      script = write_script(dir, "instant_exit.ts", ~s[// exits immediately])
+
+      {:ok, pid} = Denox.Run.start_link(file: script, permissions: :all)
+
+      Denox.Run.subscribe(pid)
+      assert_receive {:denox_run_exit, ^pid, 0}, 5000
+
+      assert {:error, :closed} = Denox.Run.send(pid, "too late")
+    end
   end
 
   describe "subscribe/1" do
