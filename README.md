@@ -12,7 +12,7 @@ Denox gives Elixir applications first-class access to the JS/TS ecosystem — ev
 
 ## Features
 
-- **JavaScript evaluation** — sub-millisecond V8 eval via `deno_core`
+- **JavaScript evaluation** — sub-millisecond V8 eval via `deno_runtime`
 - **TypeScript transpilation** — native swc/deno_ast, no type-checking overhead
 - **ES module loading** — `import`/`export` between `.ts`/`.js` files
 - **Async evaluation** — `await`, dynamic `import()`, Promise resolution
@@ -44,7 +44,7 @@ end
 The first compile takes ~20-30 minutes because V8 compiles from source. Subsequent compiles are fast.
 
 - **Rust** (stable) — install via [rustup](https://rustup.rs)
-- **Elixir** 1.17+ / OTP 27+
+- **Elixir** 1.18+ / OTP 27+
 
 To force a local build (instead of using precompiled binaries):
 
