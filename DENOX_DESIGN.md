@@ -2,10 +2,14 @@
 
 ## Embed Deno TypeScript/JavaScript Runtime in Elixir
 
-**Version:** 0.1.0-draft
-**Status:** Design Phase
+**Version:** 0.5.0
+**Status:** Implemented
 **Inspired by:** [Pythonx](https://github.com/livebook-dev/pythonx) (embeds CPython in Elixir)
 **Prior art:** [DenoRider](https://github.com/aglundahl/deno_rider) (embeds Deno, JS-only eval)
+
+> **Note:** This document reflects the v0.1.0 design. As of v0.5.0, `deno_runtime` (MainWorker)
+> replaces `deno_core`, providing full Web API support, native permissions, and the NIF-backed
+> `Denox.Run` without requiring an external `deno` binary. See CHANGELOG.md for the full history.
 
 ---
 
@@ -27,10 +31,12 @@ The key gap Denox fills: DenoRider already embeds Deno's V8 engine for JavaScrip
 
 ### Non-Goals
 
-- Full Deno CLI feature parity (permissions model, workers, FFI)
-- In-process `npm:` specifier resolution (tightly coupled to Deno CLI internals)
 - Type-checking (transpile-only, same as `deno run` without `--check`)
 - WebSocket/HTTP server inside the runtime
+
+> **v0.1.0 non-goals now implemented:** The permissions model (granular allow/deny), in-process
+> `npm:`/`jsr:` specifier resolution, and long-lived runtime I/O (`Denox.Run`) were added in v0.5.0
+> via the `deno_runtime` MainWorker migration.
 
 ---
 
