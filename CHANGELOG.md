@@ -14,6 +14,10 @@
 - `deno_core` replaced with `deno_runtime` MainWorker for full Deno API compatibility (fetch, timers, Deno.env, etc.)
 - Monitor leak on `unsubscribe/1`: monitors are now properly demonitored when subscribers unsubscribe
 - Stale `recv_waiters` on timeout: timed-out `recv/2` callers are now monitored; dead waiters are removed before dispatching lines
+- `mix denox.run` now uses `Denox.CLI.find_deno()` for bundled CLI fallback, consistent with `Denox.Deps` and `Denox.Npm`
+- `mix denox.run` drains remaining port messages after exit_status to prevent dropping final output without trailing newline (race condition on Linux where `{:exit_status, 0}` arrives before `{:noeol, chunk}`)
+- `Denox.Deps.ensure_vendor_config/1` refactored to reduce nesting depth
+- File write errors in `Denox.Deps.ensure_vendor_config` now include the filename in the error message
 
 ## v0.4.1
 
