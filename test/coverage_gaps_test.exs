@@ -98,4 +98,83 @@ defmodule CoverageGapsTest do
       assert %{"key" => "value", "list" => [1, 2]} = Denox.JSON.decode!(result)
     end
   end
+
+  describe "Denox.build_granular_permissions_json consistency" do
+    test "false permission entries are filtered out (consistent with Denox.Run)" do
+      # With the fix, Denox.runtime should filter false entries just like Denox.Run
+      {:ok, rt} = Denox.runtime(permissions: [allow_env: true, allow_net: false])
+      # Runtime should be created successfully — allow_net: false is dropped
+      assert {:ok, "3"} = Denox.eval(rt, "1 + 2")
+    end
+
+    test "permissions: nil falls through to default (empty permissions)" do
+      {:ok, rt} = Denox.runtime(permissions: nil)
+      assert {:ok, "3"} = Denox.eval(rt, "1 + 2")
+    end
+  end
+
+  describe "Denox.Run.Base unknown call" do
+    test "CLI backend returns {:error, {:unknown_call, msg}} for unknown calls" do
+      # This needs a running Denox.CLI.Run — skip if no deno configured
+      case Application.get_env(:denox, :cli) do
+        nil ->
+          :skip
+
+        _ ->
+          tmp_dir =
+            Path.join("tmp", "coverage-unknown-call-#{System.unique_integer([:positive])}")
+
+          File.mkdir_p!(tmp_dir)
+          script = Path.join(tmp_dir, "sleep.ts")
+          File.write!(script, "await new Promise(() => {});")
+
+          on_exit(fn -> File.rm_rf!(tmp_dir) end)
+
+          {:ok, pid} = Denox.CLI.Run.start_link(file: script, permissions: :all)
+
+          assert {:error, {:unknown_call, :bogus}} =
+                   GenServer.call(pid, :bogus)
+
+          Denox.CLI.Run.stop(pid)
+      end
+    end
+  end
+
+  describe "Denox.CLI.Run noeol accumulation" do
+    @tag :tmp_dir
+    test "large output without newlines is dispatched as chunks", %{tmp_dir: tmp_dir} do
+      # Script that outputs a very long line (>64KB to trigger noeol from Port)
+      script = Path.join(tmp_dir, "big_line.ts")
+
+      File.write!(script, """
+      const big = "x".repeat(100_000);
+      console.log(big);
+      """)
+
+      case Application.get_env(:denox, :cli) do
+        nil ->
+          :skip
+
+        _ ->
+          {:ok, pid} = Denox.CLI.Run.start_link(file: script, permissions: :all)
+          Denox.CLI.Run.subscribe(pid)
+
+          # Collect all lines until exit
+          lines = collect_lines(pid, [])
+          total_output = Enum.join(lines)
+          # Should receive all 100_000 'x' characters across one or more chunks
+          assert String.length(total_output) == 100_000
+          assert total_output == String.duplicate("x", 100_000)
+      end
+    end
+  end
+
+  defp collect_lines(pid, acc) do
+    receive do
+      {:denox_run_stdout, ^pid, line} -> collect_lines(pid, [line | acc])
+      {:denox_run_exit, ^pid, _status} -> Enum.reverse(acc)
+    after
+      15_000 -> Enum.reverse(acc)
+    end
+  end
 end

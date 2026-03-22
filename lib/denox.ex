@@ -437,15 +437,14 @@ defmodule Denox do
   end
 
   defp build_granular_permissions_json(perms) do
-    base = %{mode: "granular"}
-
-    config =
-      Enum.reduce(perms, base, fn {key, value}, acc ->
-        key_str = Atom.to_string(key)
-        Map.put(acc, key_str, value)
+    granular =
+      Enum.reduce(perms, %{mode: "granular"}, fn
+        {key, true}, acc -> Map.put(acc, Atom.to_string(key), true)
+        {key, values}, acc when is_list(values) -> Map.put(acc, Atom.to_string(key), values)
+        {_key, false}, acc -> acc
       end)
 
-    Denox.JSON.encode!(config)
+    Denox.JSON.encode!(granular)
   end
 
   defp ts_extension?(path) do
