@@ -80,10 +80,31 @@ defmodule Mix.Tasks.Denox.Run do
         stdout_loop(port)
 
       {^port, {:exit_status, 0}} ->
+        # Drain any remaining data messages that may arrive after exit_status.
+        # On Linux, the OS can deliver exit_status before the last pipe bytes.
+        drain_port(port)
         :ok
 
       {^port, {:exit_status, status}} ->
+        drain_port(port)
         Mix.raise("deno process exited with status #{status}")
+    end
+  end
+
+  # Drain any remaining buffered data after the process exits.
+  # Uses a short timeout to handle the race where exit_status arrives
+  # before the final bytes are delivered from the pipe.
+  defp drain_port(port) do
+    receive do
+      {^port, {:data, {:eol, line}}} ->
+        IO.puts(line)
+        drain_port(port)
+
+      {^port, {:data, {:noeol, chunk}}} ->
+        IO.write(chunk)
+        drain_port(port)
+    after
+      50 -> :ok
     end
   end
 
