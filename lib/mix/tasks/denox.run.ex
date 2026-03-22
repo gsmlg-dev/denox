@@ -40,9 +40,9 @@ defmodule Mix.Tasks.Denox.Run do
     end
 
     deno =
-      case System.find_executable("deno") do
-        nil -> Mix.raise("deno CLI not found in PATH. Install from https://deno.land")
-        path -> path
+      case Denox.CLI.find_deno() do
+        {:ok, path} -> path
+        {:error, msg} -> Mix.raise(msg)
       end
 
     specifier = resolve_specifier(specifier)
