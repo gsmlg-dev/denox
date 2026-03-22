@@ -226,15 +226,20 @@ defmodule DenoxMixTasksTest do
       end
     end
 
-    test "handles noeol output (output without trailing newline)", %{tmp_dir: dir} do
+    test "handles noeol output larger than line buffer (covers stdout_loop noeol branch)", %{
+      tmp_dir: dir
+    } do
       Mix.Task.reenable("denox.run")
       script = Path.join(dir, "noeol.ts")
-      # Write output without trailing newline — deno uses Deno.stdout.write
+
+      # Write more than the port's line buffer limit (1_048_576 bytes) without a newline.
+      # This forces the Erlang port to deliver {:noeol, chunk} while the process is still
+      # alive, so stdout_loop (not drain_port) handles it — covering lines 78-80.
       File.write!(script, """
-      await Deno.stdout.write(new TextEncoder().encode("no newline here"));
+      const chunk = new Uint8Array(1024 * 1024 + 1).fill(65);
+      await Deno.stdout.write(chunk);
       """)
 
-      # stdout_loop receives {:noeol, chunk} → IO.write(chunk) → covers lines 79-80
       Mix.Task.run("denox.run", ["file://#{script}"])
     end
 

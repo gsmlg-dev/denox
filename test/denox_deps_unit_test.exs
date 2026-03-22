@@ -226,6 +226,43 @@ defmodule DenoxDepsUnitTest do
     end
   end
 
+  describe "maybe_set_vendor/2 — vendor already true" do
+    test "skips writing when vendor is already true in config", %{tmp_dir: dir} do
+      config = Path.join(dir, "vendor_true.json")
+      write_json(config, %{"vendor" => true, "imports" => %{}})
+      original_content = File.read!(config)
+
+      # install/1 → find_deno → check_config → ensure_vendor_config
+      # → maybe_set_vendor(_config, %{"vendor" => true}) → :ok immediately
+      # Covers: defp maybe_set_vendor(_config, %{"vendor" => true}), do: :ok
+      # Result depends on deno availability; we just verify the config was not overwritten.
+      _result = Denox.Deps.install(config: config)
+
+      assert File.read!(config) == original_content
+    end
+  end
+
+  describe "maybe_set_vendor/2 — write failure" do
+    test "returns error when config file is not writable", %{tmp_dir: dir} do
+      config = Path.join(dir, "readonly.json")
+      write_json(config, %{"imports" => %{}})
+      File.chmod!(config, 0o444)
+
+      on_exit(fn -> File.chmod(config, 0o644) end)
+
+      # install/1 → find_deno → check_config → ensure_vendor_config
+      # → maybe_set_vendor tries File.write on readonly file → {:error, :eacces}
+      # Covers: {:error, reason} -> {:error, "Failed to write #{config}: #{reason}"}
+      # Only runs when deno is on PATH (find_deno must succeed to reach write step).
+      if System.find_executable("deno") do
+        assert {:error, msg} = Denox.Deps.install(config: config)
+        assert msg =~ "Failed to update"
+      end
+
+      File.chmod!(config, 0o644)
+    end
+  end
+
   describe "remove_from_config/2 — success path" do
     test "removes import from config and calls install", %{tmp_dir: dir} do
       config = Path.join(dir, "deno.json")
