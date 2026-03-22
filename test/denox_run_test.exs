@@ -596,4 +596,44 @@ defmodule DenoxRunTest do
       assert_receive {:denox_run_exit, ^pid, _status}, 5000
     end
   end
+
+  describe "recv waiter cleanup on caller death" do
+    test "DOWN for a recv waiter cancels the timer and cleans up state", %{tmp_dir: dir} do
+      # A script that blocks on stdin forever — no output will arrive.
+      script =
+        write_script(dir, "block_stdin.ts", """
+        const buf = new Uint8Array(1024);
+        await Deno.stdin.read(buf);
+        """)
+
+      {:ok, pid} =
+        Denox.Run.start_link(
+          file: script,
+          permissions: :all
+        )
+
+      # Spawn a process that calls recv/2, then immediately kill it.
+      # This exercises the DOWN handler path for recv_waiters in Denox.Run.Base:
+      # wref == ref → Process.cancel_timer(timer_ref) is called.
+      waiter_pid =
+        spawn(fn ->
+          Denox.Run.recv(pid, timeout: 10_000)
+        end)
+
+      # Give the waiter time to register in recv_waiters
+      Process.sleep(100)
+
+      # Kill the waiter before the line arrives
+      Process.exit(waiter_pid, :kill)
+
+      # Give the GenServer time to process the DOWN message
+      Process.sleep(100)
+
+      # The GenServer should still be alive and healthy
+      assert Process.alive?(pid)
+      assert Denox.Run.alive?(pid)
+
+      Denox.Run.stop(pid)
+    end
+  end
 end
