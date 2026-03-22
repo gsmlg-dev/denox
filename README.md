@@ -254,18 +254,18 @@ Call Elixir functions from JavaScript:
 
 ## V8 Snapshots
 
-Create V8 snapshots for faster cold starts:
+> **Note:** Custom snapshots are currently not compatible with the `deno_runtime` MainWorker.
+> The `snapshot:` option is accepted for API compatibility but ignored at runtime.
+> Use `eval/2` or `exec/2` for initialization code instead.
+
+`create_snapshot/2` can still be used to serialize global JS state:
 
 ```elixir
-# Create a snapshot with pre-initialized state
+# Create a snapshot from setup code
 {:ok, snapshot} = Denox.create_snapshot("""
   globalThis.helper = (x) => x * 2;
-  globalThis.config = { debug: false };
 """)
-
-# Load the snapshot into a new runtime (instant startup)
-{:ok, rt} = Denox.runtime(snapshot: snapshot)
-{:ok, "10"} = Denox.call(rt, "helper", [5])
+assert is_binary(snapshot) and byte_size(snapshot) > 0
 
 # TypeScript snapshots (transpiled before snapshotting)
 {:ok, snapshot} = Denox.create_snapshot(
