@@ -213,6 +213,18 @@ defmodule DenoxGlobalsTest do
 
       assert {:ok, "true"} = Denox.eval(rt, code)
     end
+
+    test "CustomEvent carries detail payload", %{rt: rt} do
+      code = """
+      var target = new EventTarget();
+      var received;
+      target.addEventListener("custom", function(e) { received = e.detail; });
+      target.dispatchEvent(new CustomEvent("custom", { detail: { value: 42 } }));
+      received.value
+      """
+
+      assert {:ok, "42"} = Denox.eval(rt, code)
+    end
   end
 
   describe "AbortController" do
