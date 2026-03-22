@@ -108,20 +108,23 @@ defmodule Denox.CLI do
     end
   end
 
-  # --- Private ---
+  # --- Internal (public for testability, not part of public API) ---
 
-  defp cache_path(version) do
+  @doc false
+  def cache_path(version) do
     Path.join(["_build", "denox_cli-#{version}", "deno"])
   end
 
-  defp detect_target do
+  @doc false
+  def detect_target do
     with {:ok, os} <- detect_os(),
          {:ok, arch} <- detect_arch() do
       {:ok, {os, arch}}
     end
   end
 
-  defp detect_os do
+  @doc false
+  def detect_os do
     case :os.type() do
       {:unix, :darwin} -> {:ok, :macos}
       {:unix, :linux} -> {:ok, :linux}
@@ -129,7 +132,8 @@ defmodule Denox.CLI do
     end
   end
 
-  defp detect_arch do
+  @doc false
+  def detect_arch do
     arch =
       :erlang.system_info(:system_architecture)
       |> to_string()
@@ -141,7 +145,8 @@ defmodule Denox.CLI do
     end
   end
 
-  defp download_url(version, {os, arch}) do
+  @doc false
+  def download_url(version, {os, arch}) do
     target =
       case {os, arch} do
         {:macos, :x86_64} -> "x86_64-apple-darwin"
@@ -153,11 +158,13 @@ defmodule Denox.CLI do
     "https://github.com/denoland/deno/releases/download/v#{version}/deno-#{target}.zip"
   end
 
-  defp download(url), do: download(url, 5)
+  @doc false
+  def download(url), do: download(url, 5)
 
-  defp download(_url, 0), do: {:error, "Too many redirects"}
+  @doc false
+  def download(_url, 0), do: {:error, "Too many redirects"}
 
-  defp download(url, redirects_left) do
+  def download(url, redirects_left) do
     Application.ensure_all_started(:inets)
     Application.ensure_all_started(:ssl)
 
@@ -188,25 +195,27 @@ defmodule Denox.CLI do
     handle_response(result, redirects_left)
   end
 
-  defp handle_response({:ok, {{_, status, _}, headers, _}}, redirects_left)
-       when status in [301, 302, 303, 307, 308] do
+  @doc false
+  def handle_response({:ok, {{_, status, _}, headers, _}}, redirects_left)
+      when status in [301, 302, 303, 307, 308] do
     case Enum.find(headers, fn {k, _} -> String.downcase(to_string(k)) == "location" end) do
       {_, location} -> download(to_string(location), redirects_left - 1)
       nil -> {:error, "Redirect (HTTP #{status}) without Location header"}
     end
   end
 
-  defp handle_response({:ok, {{_, 200, _}, _, body}}, _redirects_left), do: {:ok, body}
+  def handle_response({:ok, {{_, 200, _}, _, body}}, _redirects_left), do: {:ok, body}
 
-  defp handle_response({:ok, {{_, status, _}, _, body}}, _redirects_left) do
+  def handle_response({:ok, {{_, status, _}, _, body}}, _redirects_left) do
     {:error, "Download failed (HTTP #{status}): #{body}"}
   end
 
-  defp handle_response({:error, reason}, _redirects_left) do
+  def handle_response({:error, reason}, _redirects_left) do
     {:error, "Download failed: #{inspect(reason)}"}
   end
 
-  defp target_name({os, arch}) do
+  @doc false
+  def target_name({os, arch}) do
     os_name =
       case os do
         :macos -> "macOS"
@@ -216,7 +225,8 @@ defmodule Denox.CLI do
     "#{os_name} #{arch}"
   end
 
-  defp extract_and_install(zip_data, dest) do
+  @doc false
+  def extract_and_install(zip_data, dest) do
     dest_dir = Path.dirname(dest)
 
     with :ok <- File.mkdir_p(dest_dir),
@@ -230,14 +240,16 @@ defmodule Denox.CLI do
     end
   end
 
-  defp safe_unzip(zip_data) do
+  @doc false
+  def safe_unzip(zip_data) do
     case :zip.unzip(zip_data, [:memory]) do
       {:ok, files} -> {:ok, files}
       {:error, reason} -> {:error, {:unzip, reason}}
     end
   end
 
-  defp find_deno_in_zip(files) do
+  @doc false
+  def find_deno_in_zip(files) do
     case List.keyfind(files, ~c"deno", 0) do
       {_name, binary} -> {:ok, binary}
       nil -> {:error, :deno_not_found_in_zip}
