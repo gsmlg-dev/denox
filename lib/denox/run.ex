@@ -78,9 +78,9 @@ defmodule Denox.Run do
     env_vars_json =
       env
       |> Enum.into(%{}, fn {k, v} -> {to_string(k), to_string(v)} end)
-      |> JSON.encode!()
+      |> Denox.JSON.encode!()
 
-    args_json = JSON.encode!(args)
+    args_json = Denox.JSON.encode!(args)
 
     case Denox.Native.runtime_run(
            specifier,
@@ -176,10 +176,10 @@ defmodule Denox.Run do
     end
   end
 
-  defp build_permissions_json(:all), do: JSON.encode!(%{"mode" => "allow_all"})
+  defp build_permissions_json(:all), do: Denox.JSON.encode!(%{"mode" => "allow_all"})
   # nil and :none both map to deny_all for backward compatibility
-  defp build_permissions_json(nil), do: JSON.encode!(%{"mode" => "deny_all"})
-  defp build_permissions_json(:none), do: JSON.encode!(%{"mode" => "deny_all"})
+  defp build_permissions_json(nil), do: Denox.JSON.encode!(%{"mode" => "deny_all"})
+  defp build_permissions_json(:none), do: Denox.JSON.encode!(%{"mode" => "deny_all"})
 
   defp build_permissions_json(perms) when is_list(perms) do
     granular =
@@ -189,6 +189,6 @@ defmodule Denox.Run do
         {_key, false}, acc -> acc
       end)
 
-    JSON.encode!(granular)
+    Denox.JSON.encode!(granular)
   end
 end

@@ -211,12 +211,12 @@ defmodule Denox.Deps do
   defp ensure_vendor_config(config) do
     with {:ok, content} <- File.read(config),
          {:ok, json} <- Denox.JSON.decode(content) do
-      unless Map.get(json, "vendor") == true do
+      if Map.get(json, "vendor") == true do
+        :ok
+      else
         updated = Map.put(json, "vendor", true)
-        File.write!(config, Denox.JSON.encode_pretty!(updated))
+        File.write(config, Denox.JSON.encode_pretty!(updated))
       end
-
-      :ok
     else
       _ -> {:error, "Failed to update #{config}"}
     end
