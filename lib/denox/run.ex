@@ -84,7 +84,7 @@ defmodule Denox.Run do
   def init_backend(opts) do
     package = Keyword.get(opts, :package)
     file = Keyword.get(opts, :file)
-    specifier = resolve_specifier(package || file)
+    specifier = Denox.Run.Base.resolve_specifier(package || file)
     permissions = Keyword.get(opts, :permissions)
     env = Keyword.get(opts, :env, %{})
     args = Keyword.get(opts, :args, [])
@@ -182,14 +182,6 @@ defmodule Denox.Run do
 
       {:error, _reason} ->
         Kernel.send(gen_server_pid, {:denox_run_closed, ref})
-    end
-  end
-
-  defp resolve_specifier(spec) do
-    cond do
-      String.starts_with?(spec, ["npm:", "jsr:", "http://", "https://", "file://"]) -> spec
-      String.starts_with?(spec, "@") -> "npm:#{spec}"
-      true -> spec
     end
   end
 

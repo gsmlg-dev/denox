@@ -45,7 +45,7 @@ defmodule Mix.Tasks.Denox.Run do
         {:error, msg} -> Mix.raise(msg)
       end
 
-    specifier = resolve_specifier(specifier)
+    specifier = Denox.Run.Base.resolve_specifier(specifier)
     full_args = ["run"] ++ deno_args ++ [specifier] ++ script_args
 
     Mix.shell().info("Running: deno #{Enum.join(full_args, " ")}")
@@ -160,19 +160,5 @@ defmodule Mix.Tasks.Denox.Run do
 
   defp extract_flags([arg | rest], flags, positional) do
     extract_flags(rest, flags, [arg | positional])
-  end
-
-  # Auto-prefix bare @scope/name with "npm:" since deno run requires it.
-  defp resolve_specifier(spec) do
-    cond do
-      String.starts_with?(spec, ["npm:", "jsr:", "http://", "https://", "file://"]) ->
-        spec
-
-      String.starts_with?(spec, "@") ->
-        "npm:#{spec}"
-
-      true ->
-        spec
-    end
   end
 end

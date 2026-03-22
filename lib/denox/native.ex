@@ -75,7 +75,7 @@ defmodule Denox.Native do
   @spec runtime_run_recv(reference()) :: {:ok, String.t() | nil} | {:error, String.t()}
   def runtime_run_recv(_resource), do: :erlang.nif_error(:nif_not_loaded)
 
-  @spec runtime_run_stop(reference()) :: :ok | {:error, String.t()}
+  @spec runtime_run_stop(reference()) :: {:ok, {}} | {:error, String.t()}
   def runtime_run_stop(_resource), do: :erlang.nif_error(:nif_not_loaded)
 
   @spec runtime_run_alive(reference()) :: boolean()

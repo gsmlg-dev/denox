@@ -20,6 +20,36 @@ defmodule Denox.Run.Base do
 
   @callback alive_backend?(backend_state :: term()) :: boolean()
 
+  @doc """
+  Resolve a specifier to a form suitable for the Deno runtime.
+
+  ## Rules
+
+    * Specifiers already prefixed with `npm:`, `jsr:`, `http://`, `https://`,
+      or `file://` are passed through unchanged.
+    * Scoped package names starting with `@` are prefixed with `npm:`.
+    * Everything else is returned as-is (treated as a file path by the backend).
+
+  ## Examples
+
+      iex> Denox.Run.Base.resolve_specifier("npm:cowsay")
+      "npm:cowsay"
+
+      iex> Denox.Run.Base.resolve_specifier("@scope/pkg")
+      "npm:@scope/pkg"
+
+      iex> Denox.Run.Base.resolve_specifier("server.ts")
+      "server.ts"
+  """
+  @spec resolve_specifier(String.t()) :: String.t()
+  def resolve_specifier(spec) do
+    cond do
+      String.starts_with?(spec, ["npm:", "jsr:", "http://", "https://", "file://"]) -> spec
+      String.starts_with?(spec, "@") -> "npm:#{spec}"
+      true -> spec
+    end
+  end
+
   defmacro __using__(opts) do
     backend_type = Keyword.fetch!(opts, :backend)
 

@@ -137,26 +137,13 @@ defmodule Denox.CLI.Run do
     extra_flags = Keyword.get(opts, :deno_flags, [])
     extra_args = Keyword.get(opts, :args, [])
 
-    specifier = resolve_specifier(package || file)
+    specifier = Denox.Run.Base.resolve_specifier(package || file)
 
     ["run"] ++
       permissions_to_args(permissions) ++
       extra_flags ++
       [specifier] ++
       extra_args
-  end
-
-  defp resolve_specifier(spec) do
-    cond do
-      String.starts_with?(spec, ["npm:", "jsr:", "http://", "https://", "file://"]) ->
-        spec
-
-      String.starts_with?(spec, "@") ->
-        "npm:#{spec}"
-
-      true ->
-        spec
-    end
   end
 
   @permission_flags ~w(
