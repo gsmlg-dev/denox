@@ -200,5 +200,32 @@ defmodule DenoxTsTest do
 
       assert {:ok, ~s("red")} = Denox.eval_ts(rt, code)
     end
+
+    test "namespace declaration compiles to IIFE", %{rt: rt} do
+      code = """
+      namespace Math2 {
+        export function square(n: number): number { return n * n; }
+      }
+      Math2.square(5)
+      """
+
+      assert {:ok, "25"} = Denox.eval_ts(rt, code)
+    end
+
+    test "class with access modifiers strips to plain class", %{rt: rt} do
+      code = """
+      class Counter {
+        private count: number = 0;
+        increment(): void { this.count++; }
+        get value(): number { return this.count; }
+      }
+      const c = new Counter();
+      c.increment();
+      c.increment();
+      c.value
+      """
+
+      assert {:ok, "2"} = Denox.eval_ts(rt, code)
+    end
   end
 end
