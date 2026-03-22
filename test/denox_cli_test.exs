@@ -130,6 +130,55 @@ defmodule DenoxCLITest do
     end
   end
 
+  describe "install/0 with valid zip data" do
+    test "succeeds when given a real zip with a deno entry", %{} do
+      original_cli = Application.get_env(:denox, :cli)
+      version = "install-success-42.42.42"
+      Application.put_env(:denox, :cli, version: version)
+
+      cache = Denox.CLI.cache_path(version)
+
+      on_exit(fn ->
+        File.rm_rf(Path.dirname(cache))
+
+        if original_cli,
+          do: Application.put_env(:denox, :cli, original_cli),
+          else: Application.delete_env(:denox, :cli)
+      end)
+
+      # Directly test extract_and_install to cover the success install path (lines 56-57)
+      {:ok, {_, zip_data}} = :zip.create(~c"test.zip", [{~c"deno", "fake-binary"}], [:memory])
+      assert :ok = Denox.CLI.extract_and_install(zip_data, cache)
+      assert File.exists?(cache)
+      assert File.read!(cache) == "fake-binary"
+    end
+  end
+
+  describe "bin_path/0 fetch_or_install success path" do
+    test "returns {:ok, path} after successful install" do
+      version = "fetch-install-success-33.33.33"
+      original_cli = Application.get_env(:denox, :cli)
+      Application.put_env(:denox, :cli, version: version)
+
+      cache = Denox.CLI.cache_path(version)
+
+      on_exit(fn ->
+        File.rm_rf(Path.dirname(cache))
+
+        if original_cli,
+          do: Application.put_env(:denox, :cli, original_cli),
+          else: Application.delete_env(:denox, :cli)
+      end)
+
+      # Pre-create the binary to simulate successful install
+      File.mkdir_p!(Path.dirname(cache))
+      File.write!(cache, "fake-binary")
+
+      # fetch_or_install finds the file → returns {:ok, path} (line 30)
+      assert {:ok, ^cache} = Denox.CLI.bin_path()
+    end
+  end
+
   describe "installed?/0 with pre-existing binary" do
     test "returns true when binary exists" do
       version = "88.88.88"

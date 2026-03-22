@@ -217,7 +217,7 @@ defmodule DenoxMixTasksTest do
       Mix.Task.run("denox.run", ["-A", "file://#{script}"])
     end
 
-    test "covers bare specifier (no prefix) passed through to deno", %{tmp_dir: dir} do
+    test "covers bare specifier (no prefix) passed through to deno", %{tmp_dir: _dir} do
       Mix.Task.reenable("denox.run")
       # A specifier with no npm:/jsr:/file:// prefix → resolve_specifier line 153-154
       # deno fails (file doesn't exist) → Mix.raise
@@ -238,11 +238,25 @@ defmodule DenoxMixTasksTest do
       Mix.Task.run("denox.run", ["file://#{script}"])
     end
 
-    test "covers @ prefix specifier → npm: resolution", %{tmp_dir: dir} do
+    test "covers @ prefix specifier → npm: resolution", %{tmp_dir: _dir} do
       Mix.Task.reenable("denox.run")
       # "@scope/pkg" → "npm:@scope/pkg" (line 151) → deno fails → Mix.raise
       assert_raise Mix.Error, fn ->
         Mix.Task.run("denox.run", ["@nonexistent-scope-xyz-abc/pkg-xyz-abc"])
+      end
+    end
+
+    test "raises when deno CLI is not found on PATH" do
+      Mix.Task.reenable("denox.run")
+      original_path = System.get_env("PATH")
+
+      on_exit(fn -> System.put_env("PATH", original_path) end)
+
+      # Set PATH to an empty directory that won't contain deno
+      System.put_env("PATH", "/tmp/no-deno-here-xyz-#{System.unique_integer()}")
+
+      assert_raise Mix.Error, ~r/deno CLI not found/, fn ->
+        Mix.Task.run("denox.run", ["some-script.ts"])
       end
     end
   end

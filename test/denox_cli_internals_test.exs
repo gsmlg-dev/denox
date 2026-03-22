@@ -106,6 +106,45 @@ defmodule DenoxCLIInternalsTest do
       assert msg =~ "Download failed"
       assert msg =~ "timeout"
     end
+
+    test "follows redirect with Location header" do
+      # A redirect with a Location header invokes download/2 recursively.
+      # Use redirects_left=0 to trigger "Too many redirects" on follow.
+      response =
+        {:ok,
+         {{"HTTP/1.1", 302, "Found"}, [{~c"location", ~c"https://example.com/redirected"}], ""}}
+
+      assert {:error, "Too many redirects"} =
+               Denox.CLI.handle_response(response, 1)
+    end
+
+    test "follows 301 redirect" do
+      response =
+        {:ok, {{"HTTP/1.1", 301, "Moved"}, [{~c"location", ~c"https://example.com/moved"}], ""}}
+
+      assert {:error, "Too many redirects"} =
+               Denox.CLI.handle_response(response, 1)
+    end
+
+    test "follows 307 redirect" do
+      response =
+        {:ok,
+         {{"HTTP/1.1", 307, "Temporary Redirect"}, [{~c"Location", ~c"https://example.com/temp"}],
+          ""}}
+
+      assert {:error, "Too many redirects"} =
+               Denox.CLI.handle_response(response, 1)
+    end
+
+    test "follows 308 redirect" do
+      response =
+        {:ok,
+         {{"HTTP/1.1", 308, "Permanent Redirect"}, [{~c"location", ~c"https://example.com/perm"}],
+          ""}}
+
+      assert {:error, "Too many redirects"} =
+               Denox.CLI.handle_response(response, 1)
+    end
   end
 
   describe "download/2 with zero redirects" do
