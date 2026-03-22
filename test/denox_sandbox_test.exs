@@ -88,5 +88,57 @@ defmodule DenoxSandboxTest do
       {:ok, rt} = Denox.runtime()
       assert {:ok, "3"} = Denox.eval(rt, "1 + 2")
     end
+
+    test "empty granular permissions list creates a runtime" do
+      {:ok, rt} = Denox.runtime(permissions: [])
+      assert {:ok, "3"} = Denox.eval(rt, "1 + 2")
+    end
+
+    test "multiple granular permissions combined" do
+      {:ok, rt} =
+        Denox.runtime(permissions: [allow_env: true, allow_net: true, allow_read: ["/tmp"]])
+
+      assert {:ok, "3"} = Denox.eval(rt, "1 + 2")
+    end
+  end
+
+  describe "sandbox deprecation warning" do
+    test "sandbox: true emits a deprecation warning" do
+      warnings =
+        ExUnit.CaptureIO.capture_io(:stderr, fn ->
+          {:ok, _rt} = Denox.runtime(sandbox: true)
+        end)
+
+      assert warnings =~ "sandbox"
+      assert warnings =~ "deprecated"
+    end
+
+    test "sandbox: false does not emit a warning" do
+      warnings =
+        ExUnit.CaptureIO.capture_io(:stderr, fn ->
+          {:ok, _rt} = Denox.runtime(sandbox: false)
+        end)
+
+      assert warnings == ""
+    end
+  end
+
+  describe "sandbox and permissions interaction" do
+    test "sandbox: true with no permissions option uses deny_all" do
+      # sandbox: true, no permissions → should use deny_all path
+      {:ok, rt} = Denox.runtime(sandbox: true)
+      assert {:ok, "3"} = Denox.eval(rt, "1 + 2")
+    end
+
+    test "permissions: :all takes precedence over sandbox: true" do
+      # permissions: :all is checked before sandbox in the cond chain
+      {:ok, rt} = Denox.runtime(sandbox: true, permissions: :all)
+      assert {:ok, "3"} = Denox.eval(rt, "1 + 2")
+    end
+
+    test "permissions: :none with sandbox: false uses deny_all" do
+      {:ok, rt} = Denox.runtime(sandbox: false, permissions: :none)
+      assert {:ok, "3"} = Denox.eval(rt, "1 + 2")
+    end
   end
 end
