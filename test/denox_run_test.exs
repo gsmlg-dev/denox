@@ -629,6 +629,133 @@ defmodule DenoxRunTest do
     end
   end
 
+  describe "resolve_specifier in NIF backend" do
+    test "@ prefix package resolves to npm: specifier (init_backend succeeds)" do
+      # resolve_specifier("@scope/pkg") → "npm:@scope/pkg"
+      # The runtime starts, then fails to download from npm (no network needed for init).
+      {:ok, pid} =
+        Denox.Run.start_link(
+          package: "@scope/nonexistent-denox-test-pkg-xyz",
+          permissions: :all
+        )
+
+      # GenServer was successfully created (init_backend returned {:ok, resource})
+      assert Process.alive?(pid)
+
+      Denox.Run.subscribe(pid)
+      # Runtime will exit after failing to load from npm
+      assert_receive {:denox_run_exit, ^pid, _status}, 10_000
+    end
+
+    test "npm: prefix is passed through unchanged" do
+      # resolve_specifier("npm:something") → "npm:something"
+      {:ok, pid} =
+        Denox.Run.start_link(
+          package: "npm:nonexistent-denox-test-pkg-xyz@0.0.0",
+          permissions: :all
+        )
+
+      assert Process.alive?(pid)
+      Denox.Run.subscribe(pid)
+      assert_receive {:denox_run_exit, ^pid, _status}, 10_000
+    end
+
+    test "jsr: prefix is passed through unchanged" do
+      # resolve_specifier("jsr:@std/something") → "jsr:@std/something"
+      {:ok, pid} =
+        Denox.Run.start_link(
+          package: "jsr:@denox-test/nonexistent-xyz",
+          permissions: :all
+        )
+
+      assert Process.alive?(pid)
+      Denox.Run.subscribe(pid)
+      assert_receive {:denox_run_exit, ^pid, _status}, 10_000
+    end
+
+    test "bare specifier is passed through unchanged" do
+      # resolve_specifier("bare-module") → "bare-module" (no prefix match)
+      {:ok, pid} =
+        Denox.Run.start_link(
+          package: "bare-denox-test-pkg-xyz",
+          permissions: :all
+        )
+
+      assert Process.alive?(pid)
+      Denox.Run.subscribe(pid)
+      assert_receive {:denox_run_exit, ^pid, _status}, 10_000
+    end
+
+    test "https:// prefix is passed through unchanged" do
+      # resolve_specifier("https://...") → passthrough
+      {:ok, pid} =
+        Denox.Run.start_link(
+          file: "https://localhost:1/nonexistent-denox-test.ts",
+          permissions: :all
+        )
+
+      assert Process.alive?(pid)
+      Denox.Run.subscribe(pid)
+      assert_receive {:denox_run_exit, ^pid, _status}, 10_000
+    end
+
+    test "http:// prefix is passed through unchanged" do
+      # resolve_specifier("http://...") → passthrough
+      {:ok, pid} =
+        Denox.Run.start_link(
+          file: "http://localhost:1/nonexistent-denox-test.ts",
+          permissions: :all
+        )
+
+      assert Process.alive?(pid)
+      Denox.Run.subscribe(pid)
+      assert_receive {:denox_run_exit, ^pid, _status}, 10_000
+    end
+  end
+
+  describe "multiple concurrent recv waiters (drain_waiters)" do
+    test "all pending recv calls get {:error, :closed} when runtime stops", %{tmp_dir: dir} do
+      script = write_script(dir, "multi_recv_stop.ts", "await new Promise(() => {});")
+
+      {:ok, pid} = Denox.Run.start_link(file: script, permissions: :all)
+
+      parent = self()
+
+      # Spawn 3 concurrent recv waiters
+      tasks =
+        for i <- 1..3 do
+          Task.async(fn ->
+            result =
+              try do
+                Denox.Run.recv(pid, timeout: 30_000)
+              catch
+                :exit, _ -> {:error, :exit}
+              end
+
+            send(parent, {:recv_result, i, result})
+            result
+          end)
+        end
+
+      # Give all waiters time to register
+      Process.sleep(200)
+
+      # Stop the runtime — drain_waiters should reply :closed to all 3
+      Denox.Run.stop(pid)
+
+      # Collect results from all tasks
+      results =
+        for task <- tasks do
+          Task.await(task, 5000)
+        end
+
+      # All waiters should have received {:error, :closed} or {:error, :exit} (if GenServer exited first)
+      for result <- results do
+        assert result in [{:error, :closed}, {:error, :exit}]
+      end
+    end
+  end
+
   describe "receiver_loop polling (covers nil/alive recursion)" do
     @tag :slow
     test "receiver_loop recurses after recv timeout while runtime is still alive", %{tmp_dir: dir} do

@@ -145,6 +145,15 @@ defmodule DenoxCLIInternalsTest do
       assert {:error, "Too many redirects"} =
                Denox.CLI.handle_response(response, 1)
     end
+
+    test "follows 303 redirect" do
+      response =
+        {:ok,
+         {{"HTTP/1.1", 303, "See Other"}, [{~c"location", ~c"https://example.com/other"}], ""}}
+
+      assert {:error, "Too many redirects"} =
+               Denox.CLI.handle_response(response, 1)
+    end
   end
 
   describe "download/2 with zero redirects" do
