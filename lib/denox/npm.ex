@@ -95,6 +95,11 @@ defmodule Denox.Npm do
     Same as `bundle/3`.
 
   Returns `:ok` or `{:error, message}`.
+
+  ## Examples
+
+      Denox.Npm.bundle_file("lib/js/entrypoint.ts", "priv/bundles/app.js")
+      Denox.Npm.bundle_file("lib/js/entrypoint.ts", "priv/bundles/app.js", minify: true)
   """
   @spec bundle_file(String.t(), String.t(), keyword()) :: :ok | {:error, String.t()}
   def bundle_file(entrypoint, output_path, opts \\ []) do

@@ -129,5 +129,20 @@ defmodule DenoxNpmUnitTest do
       assert {:error, msg} = result
       assert msg =~ "not found"
     end
+
+    test "returns error when deno bundle fails on existing file", %{tmp_dir: dir} do
+      # File exists but imports a local module that doesn't exist — causes deno to fail
+      entry = Path.join(dir, "broken.ts")
+      output = Path.join(dir, "broken_out.js")
+
+      File.write!(
+        entry,
+        ~s[import { something } from "./nonexistent_dep.ts";\nexport { something };\n]
+      )
+
+      result = Denox.Npm.bundle_file(entry, output)
+      assert {:error, msg} = result
+      assert msg =~ "deno bundle failed"
+    end
   end
 end
