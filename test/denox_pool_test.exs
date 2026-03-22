@@ -1,6 +1,19 @@
 defmodule DenoxPoolTest do
   use ExUnit.Case, async: true
 
+  describe "child_spec/1" do
+    test "uses :name as the child id" do
+      spec = Denox.Pool.child_spec(name: :my_pool, size: 2)
+      assert spec.id == :my_pool
+      assert spec.start == {Denox.Pool, :start_link, [[name: :my_pool, size: 2]]}
+    end
+
+    test "defaults id to module name when :name is omitted" do
+      spec = Denox.Pool.child_spec(size: 2)
+      assert spec.id == Denox.Pool
+    end
+  end
+
   describe "pool lifecycle" do
     test "starts a pool with default size" do
       start_supervised!({Denox.Pool, name: :test_pool_default, size: 2})

@@ -43,6 +43,11 @@ defmodule Denox.Pool do
   end
 
   @spec child_spec(keyword()) :: Supervisor.child_spec()
+  @doc """
+  Returns a child specification for the pool, using the `:name` option as the child id.
+
+  This allows multiple pools to coexist in the same supervisor without id conflicts.
+  """
   def child_spec(opts) do
     %{
       id: Keyword.get(opts, :name, __MODULE__),
