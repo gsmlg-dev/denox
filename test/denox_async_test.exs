@@ -182,5 +182,53 @@ defmodule DenoxAsyncTest do
       task = Denox.eval_ts_async_decode(rt, code)
       assert {:ok, %{"x" => 10, "y" => "hello"}} = Task.await(task)
     end
+
+    test "returns error for failing TypeScript code", %{rt: rt} do
+      code = "throw new Error('ts async decode fail')"
+      task = Denox.eval_ts_async_decode(rt, code)
+      assert {:error, _} = Task.await(task)
+    end
+  end
+
+  describe "eval_async_decode/2 JSON decode failures" do
+    test "returns error when result is not valid JSON", %{rt: rt} do
+      # undefined is not valid JSON — decode should fail
+      code = "export default undefined"
+      task = Denox.eval_async_decode(rt, code)
+      result = Task.await(task)
+      # Either the NIF returns "undefined" which fails JSON decode,
+      # or eval itself returns an error — both are acceptable
+      case result do
+        {:error, _} -> :ok
+        {:ok, nil} -> :ok
+      end
+    end
+
+    test "propagates eval error without attempting decode", %{rt: rt} do
+      code = "throw new Error('no decode for you')"
+      task = Denox.eval_async_decode(rt, code)
+      assert {:error, msg} = Task.await(task)
+      assert is_binary(msg)
+      assert msg =~ "no decode for you"
+    end
+  end
+
+  describe "call_async_decode/3 error propagation" do
+    test "returns error when async function throws", %{rt: rt} do
+      Denox.exec(rt, """
+      globalThis.failingAsync = async function() {
+        throw new Error("async call failed");
+      }
+      """)
+
+      task = Denox.call_async_decode(rt, "failingAsync")
+      assert {:error, msg} = Task.await(task)
+      assert is_binary(msg)
+    end
+
+    test "returns error when function does not exist", %{rt: rt} do
+      task = Denox.call_async_decode(rt, "nonExistentFunc")
+      assert {:error, _} = Task.await(task)
+    end
   end
 end

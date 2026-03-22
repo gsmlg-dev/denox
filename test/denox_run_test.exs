@@ -686,4 +686,108 @@ defmodule DenoxRunTest do
       Denox.Run.stop(pid)
     end
   end
+
+  describe "multiple subscribers" do
+    test "all subscribers receive stdout and exit messages", %{tmp_dir: dir} do
+      script =
+        write_script(dir, "multi_sub.ts", """
+        console.log("broadcast");
+        """)
+
+      {:ok, pid} = Denox.Run.start_link(file: script, permissions: :all)
+
+      # Subscribe from two spawned processes
+      parent = self()
+
+      sub1 =
+        spawn(fn ->
+          Denox.Run.subscribe(pid)
+
+          receive do
+            {:denox_run_stdout, ^pid, line} -> send(parent, {:sub1, line})
+          after
+            5000 -> send(parent, {:sub1, :timeout})
+          end
+        end)
+
+      sub2 =
+        spawn(fn ->
+          Denox.Run.subscribe(pid)
+
+          receive do
+            {:denox_run_stdout, ^pid, line} -> send(parent, {:sub2, line})
+          after
+            5000 -> send(parent, {:sub2, :timeout})
+          end
+        end)
+
+      assert_receive {:sub1, "broadcast"}, 5000
+      assert_receive {:sub2, "broadcast"}, 5000
+
+      # Cleanup
+      Process.exit(sub1, :kill)
+      Process.exit(sub2, :kill)
+    end
+  end
+
+  describe "stop with pending recv" do
+    test "pending recv gets error when stop is called", %{tmp_dir: dir} do
+      script = write_script(dir, "stop_pending.ts", "await new Promise(() => {});")
+
+      {:ok, pid} = Denox.Run.start_link(file: script, permissions: :all)
+
+      # Start a recv in a separate process that traps exits
+      parent = self()
+
+      spawn(fn ->
+        result =
+          try do
+            Denox.Run.recv(pid, timeout: 10_000)
+          catch
+            :exit, _ -> {:error, :exit}
+          end
+
+        send(parent, {:recv_result, result})
+      end)
+
+      # Give recv time to register
+      Process.sleep(100)
+
+      # Stop the runtime
+      Denox.Run.stop(pid)
+
+      assert_receive {:recv_result, result}, 5000
+      assert result in [{:error, :closed}, {:error, :exit}]
+    end
+  end
+
+  describe "subscribe then unsubscribe then resubscribe" do
+    test "resubscribe receives messages again", %{tmp_dir: dir} do
+      script =
+        write_script(dir, "resub.ts", """
+        const buf = new Uint8Array(1024);
+        await Deno.stdin.read(buf);
+        console.log("first");
+        const buf2 = new Uint8Array(1024);
+        await Deno.stdin.read(buf2);
+        console.log("second");
+        """)
+
+      {:ok, pid} = Denox.Run.start_link(file: script, permissions: :all)
+
+      Denox.Run.subscribe(pid)
+      Denox.Run.unsubscribe(pid)
+
+      # Trigger first output — should NOT receive since unsubscribed
+      Denox.Run.send(pid, "go1")
+      refute_receive {:denox_run_stdout, ^pid, "first"}, 500
+
+      # Resubscribe
+      Denox.Run.subscribe(pid)
+
+      # Trigger second output — should receive
+      Denox.Run.send(pid, "go2")
+      assert_receive {:denox_run_stdout, ^pid, "second"}, 5000
+    end
+  end
 end

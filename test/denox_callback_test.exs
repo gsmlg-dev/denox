@@ -119,6 +119,97 @@ defmodule Denox.CallbackTest do
     end
   end
 
+  describe "callback returning nil/null" do
+    test "callback returning nil encodes as null" do
+      {:ok, rt, _handler} =
+        CallbackHandler.runtime(
+          callbacks: %{
+            "get_nil" => fn _args -> nil end
+          }
+        )
+
+      {:ok, result} = Denox.eval(rt, ~s[Denox.callback("get_nil")])
+      assert result == "null"
+    end
+
+    test "callback returning empty list encodes as empty array" do
+      {:ok, rt, _handler} =
+        CallbackHandler.runtime(
+          callbacks: %{
+            "empty" => fn _args -> [] end
+          }
+        )
+
+      {:ok, result} = Denox.eval(rt, ~s[JSON.stringify(Denox.callback("empty"))])
+      assert result == ~s("[]")
+    end
+  end
+
+  describe "callback with no arguments" do
+    test "callback receives empty list when called with no extra args" do
+      {:ok, rt, _handler} =
+        CallbackHandler.runtime(
+          callbacks: %{
+            "no_args" => fn args ->
+              length(args)
+            end
+          }
+        )
+
+      {:ok, result} = Denox.eval(rt, ~s[Denox.callback("no_args")])
+      assert result == "0"
+    end
+  end
+
+  describe "callback with boolean and special values" do
+    test "callback returning true" do
+      {:ok, rt, _handler} =
+        CallbackHandler.runtime(
+          callbacks: %{
+            "is_valid" => fn _args -> true end
+          }
+        )
+
+      {:ok, result} = Denox.eval(rt, ~s[Denox.callback("is_valid")])
+      assert result == "true"
+    end
+
+    test "callback returning string with special characters" do
+      {:ok, rt, _handler} =
+        CallbackHandler.runtime(
+          callbacks: %{
+            "special" => fn _args -> "hello \"world\" \n\t" end
+          }
+        )
+
+      {:ok, result} = Denox.eval(rt, ~s[Denox.callback("special")])
+      decoded = Jason.decode!(result)
+      assert decoded == "hello \"world\" \n\t"
+    end
+  end
+
+  describe "multiple sequential callbacks" do
+    test "runtime remains stable after many callbacks" do
+      {:ok, rt, _handler} =
+        CallbackHandler.runtime(
+          callbacks: %{
+            "inc" => fn [x] -> x + 1 end
+          }
+        )
+
+      code = """
+      let x = 0;
+      for (let i = 0; i < 10; i++) {
+        x = Denox.callback("inc", x);
+      }
+      x
+      """
+
+      {:ok, result} = Denox.eval(rt, code)
+      assert result == "10"
+    end
+  end
+
   describe "runtime without callbacks" do
     test "runtime without callback_pid works normally" do
       {:ok, rt} = Denox.runtime()

@@ -262,6 +262,45 @@ defmodule DenoxPoolTest do
     end
   end
 
+  describe "pool with size 1" do
+    test "all operations work with a single runtime" do
+      pool = :"test_pool_s1_#{:erlang.unique_integer([:positive])}"
+      start_supervised!({Denox.Pool, name: pool, size: 1})
+
+      assert {:ok, "3"} = Denox.Pool.eval(pool, "1 + 2")
+      assert :ok = Denox.Pool.exec(pool, "globalThis.x = 42")
+      assert {:ok, "42"} = Denox.Pool.eval(pool, "globalThis.x")
+      assert {:ok, %{"x" => 42}} = Denox.Pool.eval_decode(pool, "({x: 42})")
+    end
+
+    test "round-robin with size 1 always hits same runtime" do
+      pool = :"test_pool_s1_rr_#{:erlang.unique_integer([:positive])}"
+      start_supervised!({Denox.Pool, name: pool, size: 1})
+
+      Denox.Pool.exec(pool, "globalThis.counter = 0")
+      Denox.Pool.exec(pool, "globalThis.counter += 1")
+      Denox.Pool.exec(pool, "globalThis.counter += 1")
+
+      assert {:ok, "2"} = Denox.Pool.eval(pool, "globalThis.counter")
+    end
+  end
+
+  describe "pool error recovery" do
+    test "pool remains usable after multiple errors" do
+      pool = :"test_pool_recov_#{:erlang.unique_integer([:positive])}"
+      start_supervised!({Denox.Pool, name: pool, size: 2})
+
+      # Generate errors on both runtimes
+      for _ <- 1..4 do
+        assert {:error, _} = Denox.Pool.eval(pool, "throw new Error('boom')")
+      end
+
+      # Both runtimes should still work
+      assert {:ok, "1"} = Denox.Pool.eval(pool, "1")
+      assert {:ok, "2"} = Denox.Pool.eval(pool, "2")
+    end
+  end
+
   describe "pool error handling" do
     setup do
       pool = :"test_pool_err_#{:erlang.unique_integer([:positive])}"
