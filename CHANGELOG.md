@@ -18,6 +18,8 @@
 - `mix denox.run` drains remaining port messages after exit_status to prevent dropping final output without trailing newline (race condition on Linux where `{:exit_status, 0}` arrives before `{:noeol, chunk}`)
 - `Denox.Deps.ensure_vendor_config/1` refactored to reduce nesting depth
 - File write errors in `Denox.Deps.ensure_vendor_config` now include the filename in the error message
+- `send/2` documentation updated to document automatic newline appending and `{:error, :closed}` return
+- `Denox.CLI.Run` now documents the `:deno_flags` option for passing extra flags to `deno run`
 
 ## v0.4.1
 
