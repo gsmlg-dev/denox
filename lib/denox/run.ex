@@ -57,6 +57,23 @@ defmodule Denox.Run do
   see each other's env vars if started simultaneously. For strict isolation,
   use `Denox.CLI.Run` with a subprocess-per-instance model, or ensure env
   var names are unique across instances.
+
+  ## Thread Scaling
+
+  Each `Denox.Run` instance occupies **1 OS thread** (the event loop thread
+  running the V8 `MainWorker`) plus **1 dirty I/O scheduler slot** while
+  `runtime_run_recv` blocks waiting for stdout.
+
+  OTP provides 10 dirty I/O schedulers by default. This limits concurrent
+  `Denox.Run` instances to approximately **10** before dirty I/O scheduler
+  contention occurs. For higher concurrency, increase the dirty I/O scheduler
+  count via the `+SDio N` BEAM flag (e.g. in `vm.args` or `rel/vm.args.eex`):
+
+      ## rel/vm.args.eex
+      +SDio 32
+
+  For subprocess-based isolation without dirty scheduler limits, use
+  `Denox.CLI.Run` instead, which spawns a separate OS process per instance.
   """
 
   use Denox.Run.Base, backend: :nif
