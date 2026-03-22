@@ -92,6 +92,18 @@ defmodule DenoxSnapshotTest do
       assert {:ok, "3"} = Denox.eval(rt, "1 + 2")
     end
 
+    test "passing non-empty snapshot emits a warning (MainWorker incompatibility)" do
+      {:ok, snapshot} = Denox.create_snapshot("globalThis.x = 42")
+
+      warning =
+        ExUnit.CaptureIO.capture_io(:stderr, fn ->
+          {:ok, _rt} = Denox.runtime(snapshot: snapshot)
+        end)
+
+      assert warning =~ "snapshot"
+      assert warning =~ "not supported"
+    end
+
     @tag :skip
     test "TypeScript snapshot with transpile option" do
       {:ok, snapshot} =

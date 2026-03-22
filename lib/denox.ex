@@ -58,6 +58,13 @@ defmodule Denox do
     callback_pid = Keyword.get(opts, :callback_pid)
     snapshot = Keyword.get(opts, :snapshot, <<>>)
 
+    if snapshot != <<>> do
+      IO.warn(
+        "the :snapshot option is not supported with the deno_runtime MainWorker backend. " <>
+          "The snapshot will be ignored. Use eval() to run initialization code instead."
+      )
+    end
+
     import_map_json =
       case Keyword.get(opts, :import_map) do
         nil -> ""
@@ -81,19 +88,20 @@ defmodule Denox do
   Create a V8 snapshot from setup code.
 
   The snapshot captures all global state (variables, functions, etc.)
-  after executing the setup code. Load it with `runtime(snapshot: bytes)`
-  for faster cold starts.
+  after executing the setup code.
+
+  > #### Snapshot compatibility {: .warning}
+  >
+  > Custom V8 snapshots created by `create_snapshot/2` are **not compatible**
+  > with the `deno_runtime` MainWorker backend currently used by `Denox.runtime/1`.
+  > Passing a snapshot via `runtime(snapshot: bytes)` will emit a warning and the
+  > snapshot will be ignored. Use `Denox.eval/3` or `Denox.exec/3` to run
+  > initialization code instead.
 
   Options:
     - `:transpile` - if true, transpile TypeScript before executing (default: false)
 
   Returns `{:ok, snapshot_bytes}` or `{:error, message}`.
-
-  ## Example
-
-      {:ok, snapshot} = Denox.create_snapshot("globalThis.helper = (x) => x * 2")
-      {:ok, rt} = Denox.runtime(snapshot: snapshot)
-      {:ok, "10"} = Denox.call(rt, "helper", [5])
   """
   @spec create_snapshot(String.t(), keyword()) :: {:ok, binary()} | {:error, String.t()}
   def create_snapshot(setup_code, opts \\ []) do

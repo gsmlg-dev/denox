@@ -790,4 +790,175 @@ defmodule DenoxRunTest do
       assert_receive {:denox_run_stdout, ^pid, "second"}, 5000
     end
   end
+
+  describe "Deno.* native APIs with permissions (PRD success criteria)" do
+    test "script can use Deno.readTextFile with allow_read permission", %{tmp_dir: dir} do
+      # Write a file that the script will read
+      data_file = Path.join(dir, "data.txt")
+      File.write!(data_file, "file_contents_xyz")
+
+      script =
+        write_script(dir, "read_file.ts", """
+        const content = await Deno.readTextFile("#{data_file}");
+        console.log(content.trim());
+        """)
+
+      {:ok, pid} =
+        Denox.Run.start_link(
+          file: script,
+          permissions: [allow_read: [dir]]
+        )
+
+      {:ok, line} = Denox.Run.recv(pid, timeout: 5000)
+      assert line == "file_contents_xyz"
+    end
+
+    test "script can use Deno.writeTextFile with allow_write permission", %{tmp_dir: dir} do
+      output_file = Path.join(dir, "output.txt")
+
+      script =
+        write_script(dir, "write_file.ts", """
+        await Deno.writeTextFile("#{output_file}", "written_by_run");
+        console.log("done");
+        """)
+
+      {:ok, pid} =
+        Denox.Run.start_link(
+          file: script,
+          permissions: [allow_write: [dir], allow_read: [dir]]
+        )
+
+      # Subscribe first so we catch the exit event before it races
+      Denox.Run.subscribe(pid)
+      {:ok, "done"} = Denox.Run.recv(pid, timeout: 5000)
+      assert_receive {:denox_run_exit, ^pid, _}, 5000
+
+      assert File.read!(output_file) == "written_by_run"
+    end
+
+    test "deny_all permissions blocks Deno.readTextFile", %{tmp_dir: dir} do
+      data_file = Path.join(dir, "secret.txt")
+      File.write!(data_file, "secret_content")
+
+      # Script outputs error or exits; the runtime sends the error to stdout
+      script =
+        write_script(dir, "denied_read.ts", """
+        try {
+          const content = await Deno.readTextFile("#{data_file}");
+          console.log("should_not_reach:" + content);
+        } catch (e) {
+          // e.name may be "PermissionDenied" or contain "permission" depending on Deno version
+          const name = String(e?.name ?? "").toLowerCase();
+          const msg = String(e?.message ?? "").toLowerCase();
+          const isPermission = name.includes("permission") || msg.includes("permission");
+          console.log("permission_denied:" + (isPermission ? "yes" : "no:name=" + e?.name));
+        }
+        """)
+
+      {:ok, pid} =
+        Denox.Run.start_link(
+          file: script,
+          permissions: :none
+        )
+
+      {:ok, line} = Denox.Run.recv(pid, timeout: 5000)
+      assert line =~ "permission_denied:yes"
+    end
+
+    test "Deno.env.get works with allow_env permission", %{tmp_dir: dir} do
+      script =
+        write_script(dir, "env_access.ts", """
+        console.log(Deno.env.get("DENOX_RUN_TEST_ENV") ?? "undefined");
+        """)
+
+      {:ok, pid} =
+        Denox.Run.start_link(
+          file: script,
+          permissions: [allow_env: ["DENOX_RUN_TEST_ENV"]],
+          env: %{"DENOX_RUN_TEST_ENV" => "env_value_42"}
+        )
+
+      {:ok, line} = Denox.Run.recv(pid, timeout: 5000)
+      assert line == "env_value_42"
+    end
+
+    test "Deno.* namespace is available (version, pid, build)", %{tmp_dir: dir} do
+      script =
+        write_script(dir, "deno_ns.ts", """
+        const hasVersion = typeof Deno.version === "object";
+        const hasPid = typeof Deno.pid === "number";
+        const hasBuild = typeof Deno.build === "object";
+        console.log(hasVersion && hasPid && hasBuild ? "ok" : "fail");
+        """)
+
+      {:ok, pid} = Denox.Run.start_link(file: script, permissions: :all)
+      {:ok, line} = Denox.Run.recv(pid, timeout: 5000)
+      assert line == "ok"
+    end
+  end
+
+  describe "buffer_size option" do
+    test "accepts buffer_size option without error", %{tmp_dir: dir} do
+      script = write_script(dir, "buf.ts", ~s[console.log("buffered");])
+
+      {:ok, pid} =
+        Denox.Run.start_link(
+          file: script,
+          permissions: :all,
+          buffer_size: 512
+        )
+
+      {:ok, line} = Denox.Run.recv(pid, timeout: 5000)
+      assert line == "buffered"
+    end
+
+    test "buffer_size 0 uses default", %{tmp_dir: dir} do
+      script = write_script(dir, "buf0.ts", ~s[console.log("default_buf");])
+
+      {:ok, pid} =
+        Denox.Run.start_link(
+          file: script,
+          permissions: :all,
+          buffer_size: 0
+        )
+
+      {:ok, line} = Denox.Run.recv(pid, timeout: 5000)
+      assert line == "default_buf"
+    end
+  end
+
+  describe "child_spec/1 for OTP supervision" do
+    test "can be started under a Supervisor", %{tmp_dir: dir} do
+      script = write_script(dir, "supervised.ts", "await new Promise(r => setTimeout(r, 30000));")
+
+      spec = %{
+        id: :denox_run_test,
+        start: {Denox.Run, :start_link, [[file: script, permissions: :all]]}
+      }
+
+      {:ok, sup} = Supervisor.start_link([spec], strategy: :one_for_one)
+
+      children = Supervisor.which_children(sup)
+      assert [{:denox_run_test, pid, :worker, _}] = children
+      assert Process.alive?(pid)
+      assert Denox.Run.alive?(pid)
+
+      Supervisor.stop(sup)
+    end
+
+    test "start_link accepts :name option for registration", %{tmp_dir: dir} do
+      script = write_script(dir, "named.ts", "await new Promise(r => setTimeout(r, 30000));")
+      name = :"test_run_#{System.unique_integer([:positive])}"
+
+      {:ok, _pid} =
+        Denox.Run.start_link(
+          file: script,
+          permissions: :all,
+          name: name
+        )
+
+      assert Process.whereis(name) != nil
+      Denox.Run.stop(name)
+    end
+  end
 end

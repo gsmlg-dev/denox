@@ -421,6 +421,12 @@ fn runtime_new(
             Some(cache_dir)
         };
 
+        // Set DENO_DIR so MainWorker uses the configured cache directory for
+        // npm/jsr module resolution and compilation caches.
+        if let Some(ref dir) = loader_cache_dir {
+            std::env::set_var("DENO_DIR", dir);
+        }
+
         // Compute the base directory URL for module specifiers
         let base = if !base_dir.is_empty() {
             std::path::PathBuf::from(&base_dir)
