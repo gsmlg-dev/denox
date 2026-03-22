@@ -210,19 +210,22 @@ defmodule Denox.Deps do
 
   defp ensure_vendor_config(config) do
     with {:ok, content} <- File.read(config),
-         {:ok, json} <- Denox.JSON.decode(content) do
-      if Map.get(json, "vendor") == true do
-        :ok
-      else
-        updated = Map.put(json, "vendor", true)
-
-        case File.write(config, Denox.JSON.encode_pretty!(updated)) do
-          :ok -> :ok
-          {:error, reason} -> {:error, "Failed to write #{config}: #{reason}"}
-        end
-      end
+         {:ok, json} <- Denox.JSON.decode(content),
+         :ok <- maybe_set_vendor(config, json) do
+      :ok
     else
       _ -> {:error, "Failed to update #{config}"}
+    end
+  end
+
+  defp maybe_set_vendor(_config, %{"vendor" => true}), do: :ok
+
+  defp maybe_set_vendor(config, json) do
+    updated = Map.put(json, "vendor", true)
+
+    case File.write(config, Denox.JSON.encode_pretty!(updated)) do
+      :ok -> :ok
+      {:error, reason} -> {:error, "Failed to write #{config}: #{reason}"}
     end
   end
 
