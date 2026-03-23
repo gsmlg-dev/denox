@@ -1,9 +1,10 @@
 defmodule DenoxDepsUnitTest do
   @moduledoc """
-  Unit tests for Denox.Deps that do not require the Deno CLI.
+  Unit tests for Denox.Deps.
 
-  These tests cover file I/O, JSON parsing, and check logic.
-  Tests that require `deno` are in denox_deps_test.exs (tagged :deno).
+  Pure file I/O and JSON parsing tests run without Deno CLI.
+  Tests that call add/remove/install (which invoke find_deno) are tagged :deno.
+  Integration tests requiring npm network access are in denox_deps_test.exs (tagged :deno).
   """
   use ExUnit.Case, async: true
 
@@ -99,6 +100,7 @@ defmodule DenoxDepsUnitTest do
   end
 
   describe "add/3 — success path" do
+    @describetag :deno
     test "creates config and adds import entry when config does not exist", %{tmp_dir: dir} do
       config = Path.join(dir, "new_deno.json")
       refute File.exists?(config)
@@ -122,6 +124,7 @@ defmodule DenoxDepsUnitTest do
   end
 
   describe "add/3 — error paths" do
+    @describetag :deno
     test "returns error when config has invalid JSON", %{tmp_dir: dir} do
       config = Path.join(dir, "deno.json")
       File.write!(config, "not json")
@@ -142,6 +145,7 @@ defmodule DenoxDepsUnitTest do
   end
 
   describe "remove/2 — error paths" do
+    @describetag :deno
     test "returns error when config has invalid JSON", %{tmp_dir: dir} do
       config = Path.join(dir, "deno.json")
       File.write!(config, "not json")
@@ -216,6 +220,7 @@ defmodule DenoxDepsUnitTest do
   end
 
   describe "ensure_vendor_config/1 — error clause" do
+    @describetag :deno
     test "returns error when config has invalid JSON", %{tmp_dir: dir} do
       config = Path.join(dir, "invalid.json")
       File.write!(config, "not valid json")
@@ -227,6 +232,7 @@ defmodule DenoxDepsUnitTest do
   end
 
   describe "maybe_set_vendor/2 — vendor already true" do
+    @describetag :deno
     test "skips writing when vendor is already true in config", %{tmp_dir: dir} do
       config = Path.join(dir, "vendor_true.json")
       write_json(config, %{"vendor" => true, "imports" => %{}})
@@ -243,6 +249,7 @@ defmodule DenoxDepsUnitTest do
   end
 
   describe "maybe_set_vendor/2 — write failure" do
+    @describetag :deno
     test "returns error when config file is not writable", %{tmp_dir: dir} do
       config = Path.join(dir, "readonly.json")
       write_json(config, %{"imports" => %{}})
@@ -264,6 +271,7 @@ defmodule DenoxDepsUnitTest do
   end
 
   describe "remove_from_config/2 — success path" do
+    @describetag :deno
     test "removes import from config and calls install", %{tmp_dir: dir} do
       config = Path.join(dir, "deno.json")
       write_json(config, %{"imports" => %{"testpkg" => "npm:testpkg@1.0"}})

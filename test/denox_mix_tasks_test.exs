@@ -1,7 +1,8 @@
 defmodule DenoxMixTasksTest do
   @moduledoc """
-  Tests for Mix tasks that can run without Deno CLI.
-  Tests the argument validation and error path behaviors.
+  Tests for Mix tasks.
+  Argument validation tests run without Deno CLI.
+  Tests that invoke the Deno CLI are tagged :deno.
   """
   use ExUnit.Case, async: false
 
@@ -24,6 +25,7 @@ defmodule DenoxMixTasksTest do
       end
     end
 
+    @tag :deno
     test "raises when Deps.add fails (invalid config path)" do
       Mix.Task.reenable("denox.add")
 
@@ -39,6 +41,7 @@ defmodule DenoxMixTasksTest do
       end
     end
 
+    @tag :deno
     test "prints success when add succeeds with empty deno.json", %{tmp_dir: dir} do
       Mix.Task.reenable("denox.add")
       config = Path.join(dir, "deno.json")
@@ -62,6 +65,7 @@ defmodule DenoxMixTasksTest do
       end
     end
 
+    @tag :deno
     test "raises when Deps.remove fails (config not found)" do
       Mix.Task.reenable("denox.remove")
 
@@ -71,6 +75,7 @@ defmodule DenoxMixTasksTest do
       end
     end
 
+    @tag :deno
     test "prints success when remove succeeds with empty deno.json", %{tmp_dir: dir} do
       Mix.Task.reenable("denox.remove")
       config = Path.join(dir, "deno.json")
@@ -82,6 +87,7 @@ defmodule DenoxMixTasksTest do
   end
 
   describe "mix denox.install" do
+    @tag :deno
     test "raises when config file does not exist" do
       Mix.Task.reenable("denox.install")
 
@@ -91,6 +97,7 @@ defmodule DenoxMixTasksTest do
       end
     end
 
+    @tag :deno
     test "prints success when install succeeds with empty deno.json", %{tmp_dir: dir} do
       Mix.Task.reenable("denox.install")
       config = Path.join(dir, "deno.json")
@@ -118,6 +125,7 @@ defmodule DenoxMixTasksTest do
       end
     end
 
+    @tag :deno
     test "prints success when bundle succeeds with a local TS file", %{tmp_dir: dir} do
       Mix.Task.reenable("denox.bundle")
       entrypoint = Path.join(dir, "entry.ts")
@@ -129,6 +137,7 @@ defmodule DenoxMixTasksTest do
       assert File.exists?(output)
     end
 
+    @tag :deno
     test "raises when bundle fails (bad specifier)", %{tmp_dir: dir} do
       Mix.Task.reenable("denox.bundle")
       output = Path.join(dir, "out.js")
@@ -157,6 +166,7 @@ defmodule DenoxMixTasksTest do
       end
     end
 
+    @tag :deno
     test "runs a local script successfully", %{tmp_dir: dir} do
       Mix.Task.reenable("denox.run")
       script = Path.join(dir, "noop.ts")
@@ -165,6 +175,7 @@ defmodule DenoxMixTasksTest do
       Mix.Task.run("denox.run", ["file://#{script}"])
     end
 
+    @tag :deno
     test "covers --allow-all flag alias", %{tmp_dir: dir} do
       Mix.Task.reenable("denox.run")
       script = Path.join(dir, "noop2.ts")
@@ -173,6 +184,7 @@ defmodule DenoxMixTasksTest do
       Mix.Task.run("denox.run", ["--allow-all", "file://#{script}"])
     end
 
+    @tag :deno
     test "covers -- separator with args passed to script", %{tmp_dir: dir} do
       Mix.Task.reenable("denox.run")
       script = Path.join(dir, "noop3.ts")
@@ -181,6 +193,7 @@ defmodule DenoxMixTasksTest do
       Mix.Task.run("denox.run", ["file://#{script}", "--", "arg1"])
     end
 
+    @tag :deno
     test "raises when deno script exits with non-zero status", %{tmp_dir: dir} do
       Mix.Task.reenable("denox.run")
       script = Path.join(dir, "fail.ts")
@@ -191,6 +204,7 @@ defmodule DenoxMixTasksTest do
       end
     end
 
+    @tag :deno
     test "covers --allow-net flag and passes it through", %{tmp_dir: dir} do
       Mix.Task.reenable("denox.run")
       script = Path.join(dir, "noop4.ts")
@@ -199,6 +213,7 @@ defmodule DenoxMixTasksTest do
       Mix.Task.run("denox.run", ["--allow-net", "file://#{script}"])
     end
 
+    @tag :deno
     test "prints stdout output lines from the script", %{tmp_dir: dir} do
       Mix.Task.reenable("denox.run")
       script = Path.join(dir, "output.ts")
@@ -208,6 +223,7 @@ defmodule DenoxMixTasksTest do
       Mix.Task.run("denox.run", ["file://#{script}"])
     end
 
+    @tag :deno
     test "covers -A shorthand flag", %{tmp_dir: dir} do
       Mix.Task.reenable("denox.run")
       script = Path.join(dir, "noop5.ts")
@@ -217,6 +233,7 @@ defmodule DenoxMixTasksTest do
       Mix.Task.run("denox.run", ["-A", "file://#{script}"])
     end
 
+    @tag :deno
     test "covers bare specifier (no prefix) passed through to deno", %{tmp_dir: _dir} do
       Mix.Task.reenable("denox.run")
       # A specifier with no npm:/jsr:/file:// prefix → resolve_specifier line 153-154
@@ -226,6 +243,7 @@ defmodule DenoxMixTasksTest do
       end
     end
 
+    @tag :deno
     test "handles noeol output larger than line buffer (covers stdout_loop noeol branch)", %{
       tmp_dir: dir
     } do
@@ -243,6 +261,7 @@ defmodule DenoxMixTasksTest do
       Mix.Task.run("denox.run", ["file://#{script}"])
     end
 
+    @tag :deno
     test "stdin_loop forwards data to port (covers lines 119-126)", %{tmp_dir: dir} do
       Mix.Task.reenable("denox.run")
 
@@ -272,6 +291,7 @@ defmodule DenoxMixTasksTest do
       end
     end
 
+    @tag :deno
     test "covers @ prefix specifier → npm: resolution", %{tmp_dir: _dir} do
       Mix.Task.reenable("denox.run")
       # "@scope/pkg" → "npm:@scope/pkg" (line 151) → deno fails → Mix.raise

@@ -2,8 +2,7 @@ defmodule DenoxNpmUnitTest do
   @moduledoc """
   Unit tests for Denox.Npm.
 
-  `load/2` tests use NIF only. Bundle tests use the system deno binary (no :deno tag
-  since the binary is expected to be on PATH in the dev environment).
+  `load/2` tests use NIF only. Bundle tests use the system deno binary (tagged :deno).
   Integration tests requiring npm network access are in denox_npm_test.exs (tagged :deno).
   """
   use ExUnit.Case, async: true
@@ -49,6 +48,7 @@ defmodule DenoxNpmUnitTest do
   end
 
   describe "bundle/3 — with local file specifier" do
+    @describetag :deno
     test "returns :ok when bundling a local TS file", %{tmp_dir: dir} do
       entry = Path.join(dir, "entry.ts")
       output = Path.join(dir, "out.js")
@@ -96,6 +96,7 @@ defmodule DenoxNpmUnitTest do
   end
 
   describe "bundle!/3 — with local file specifier" do
+    @describetag :deno
     test "returns :ok when bundling succeeds", %{tmp_dir: dir} do
       entry = Path.join(dir, "entry.ts")
       output = Path.join(dir, "out_bang.js")
@@ -114,6 +115,7 @@ defmodule DenoxNpmUnitTest do
   end
 
   describe "bundle_file/3" do
+    @describetag :deno
     test "returns :ok when entrypoint exists and deno succeeds", %{tmp_dir: dir} do
       entry = Path.join(dir, "local_entry.ts")
       output = Path.join(dir, "local_out.js")
