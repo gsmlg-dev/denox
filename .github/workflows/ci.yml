@@ -1,16 +1,23 @@
----
 name: CI
 
 on:
   push:
-    branches: [ '*' ]
+    branches: ['*']
+  pull_request:
+    branches: ['*']
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 env:
   DENOX_BUILD: "true"
 
 jobs:
   compile:
-
     name: Compile
     runs-on: ubuntu-latest
 

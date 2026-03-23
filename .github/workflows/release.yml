@@ -7,9 +7,18 @@ on:
         description: "Release version (e.g. 0.2.0)"
         required: true
         type: string
+      git_ref:
+        description: "Git ref to release from"
+        required: true
+        default: "main"
+        type: string
 
 permissions:
   contents: write
+
+concurrency:
+  group: ${{ github.workflow }}-${{ inputs.version }}
+  cancel-in-progress: false
 
 jobs:
   prepare:
@@ -19,6 +28,8 @@ jobs:
       commit_sha: ${{ steps.commit.outputs.sha }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.git_ref }}
 
       - name: Update version in mix.exs
         run: sed -i 's/@version ".*"/@version "${{ inputs.version }}"/' mix.exs
