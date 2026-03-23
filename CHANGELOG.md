@@ -1,4 +1,9 @@
-## Unreleased
+## v0.6.0
+
+### Changes
+
+- fix: tag deno-dependent tests with :deno to skip in CI
+
 
 ### Improvements
 
