@@ -11,6 +11,7 @@ defmodule Denox.MixProject do
       elixir: "~> 1.18",
       start_permanent: Mix.env() == :prod,
       deps: deps(),
+      aliases: aliases(),
       description: description(),
       package: package(),
       docs: docs(),
@@ -66,6 +67,12 @@ defmodule Denox.MixProject do
         Dependencies: [Denox.Deps, Denox.Npm],
         Internal: [Denox.Native, Denox.Run.Base, Denox.JSON, Denox.Telemetry]
       ]
+    ]
+  end
+
+  defp aliases do
+    [
+      "test.e2e": ["test e2e_test"]
     ]
   end
 
