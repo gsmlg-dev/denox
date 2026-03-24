@@ -66,3 +66,5 @@ jobs:
 
       - name: Run E2E tests
         run: mix test.e2e
+        env:
+          MIX_ENV: test
