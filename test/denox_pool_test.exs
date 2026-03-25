@@ -249,6 +249,14 @@ defmodule DenoxPoolTest do
       File.write!(path, "globalThis.fromModule = true;")
       assert {:ok, "undefined"} = Denox.Pool.eval_module(pool, path)
     end
+
+    test "eval_module returns error for nonexistent module" do
+      pool = :"test_pool_module_err_#{:erlang.unique_integer([:positive])}"
+      start_supervised!({Denox.Pool, name: pool, size: 1})
+
+      assert {:error, msg} = Denox.Pool.eval_module(pool, "/nonexistent_pool_module.js")
+      assert is_binary(msg)
+    end
   end
 
   describe "pool load_npm" do
