@@ -529,6 +529,59 @@ defmodule DenoxRunTest do
       {:ok, line} = Denox.Run.recv(pid, timeout: 5000)
       assert line == "allowed"
     end
+
+    test "deny_env blocks environment variable access", %{tmp_dir: dir} do
+      script =
+        write_script(
+          dir,
+          "deny_env.ts",
+          """
+          try {
+            const val = Deno.env.get("HOME");
+            console.log("allowed");
+          } catch (_e) {
+            console.log("denied");
+          }
+          """
+        )
+
+      {:ok, pid} =
+        Denox.Run.start_link(
+          file: script,
+          permissions: [deny_env: true]
+        )
+
+      {:ok, line} = Denox.Run.recv(pid, timeout: 5000)
+      assert line == "denied"
+    end
+
+    test "deny_read blocks file read even when allow_read is set", %{tmp_dir: dir} do
+      data_file = Path.join(dir, "secret.txt")
+      File.write!(data_file, "secret")
+
+      script =
+        write_script(
+          dir,
+          "deny_read.ts",
+          """
+          try {
+            Deno.readTextFileSync("#{data_file}");
+            console.log("allowed");
+          } catch (_e) {
+            console.log("denied");
+          }
+          """
+        )
+
+      {:ok, pid} =
+        Denox.Run.start_link(
+          file: script,
+          permissions: [allow_read: true, deny_read: [data_file]]
+        )
+
+      {:ok, line} = Denox.Run.recv(pid, timeout: 5000)
+      assert line == "denied"
+    end
   end
 
   describe "os_pid/1" do
