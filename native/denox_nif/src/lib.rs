@@ -416,10 +416,16 @@ fn runtime_new(
 
     // Spawn a dedicated thread for this V8 isolate.
     std::thread::spawn(move || {
-        let tokio_rt = tokio::runtime::Builder::new_current_thread()
+        let tokio_rt = match tokio::runtime::Builder::new_current_thread()
             .enable_all()
             .build()
-            .expect("Failed to create tokio runtime");
+        {
+            Ok(rt) => rt,
+            Err(e) => {
+                eprintln!("Denox: Failed to create tokio runtime: {}", e);
+                return;
+            }
+        };
 
         let loader_cache_dir = if cache_dir.is_empty() {
             None
