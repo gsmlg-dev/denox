@@ -24,6 +24,27 @@ defmodule Denox.CLI.Run do
       :ok = Denox.CLI.Run.send(pid, data)
       {:ok, line} = Denox.CLI.Run.recv(pid, timeout: 5000)
 
+  ## Convenience Functions
+
+  All convenience helpers from `Denox.Run.Base` are available:
+
+      # One-shot capture
+      {:ok, lines} = Denox.CLI.Run.capture(
+        package: "@modelcontextprotocol/server-github",
+        permissions: :all,
+        env: %{"GITHUB_PERSONAL_ACCESS_TOKEN" => token}
+      )
+
+      # Bracket-style with automatic cleanup
+      Denox.CLI.Run.with_runtime(
+        [package: "npm:cowsay", permissions: :all],
+        fn pid ->
+          :ok = Denox.CLI.Run.send(pid, "hello")
+          {:ok, line} = Denox.CLI.Run.recv(pid, timeout: 5000)
+          line
+        end
+      )
+
   ## Telemetry Events
 
   Denox.CLI.Run emits the following telemetry events:
