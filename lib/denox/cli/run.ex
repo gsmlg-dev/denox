@@ -2,9 +2,11 @@ defmodule Denox.CLI.Run do
   @moduledoc """
   Run Deno programs as managed subprocesses using the bundled CLI.
 
-  Same API as `Denox.Run`, but uses the bundled binary from `Denox.CLI`
-  instead of the NIF runtime. Primarily useful for testing or when
-  full CLI features (deno fmt, deno lint) are needed.
+  Same API as `Denox.Run`, but spawns the bundled `deno` binary from
+  `Denox.CLI` as a subprocess instead of using the in-process NIF runtime.
+  The primary use case is **npm: and jsr: packages**, which require Deno's
+  full Node.js-compatible resolver and are not supported by the NIF backend.
+  Also useful when Deno CLI features such as `--unstable-kv` are needed.
 
   ## Additional Options
 
