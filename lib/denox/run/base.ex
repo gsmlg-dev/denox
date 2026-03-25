@@ -114,8 +114,9 @@ defmodule Denox.Run.Base do
         - `:env` - map of environment variables
         - `:args` - extra arguments after the specifier
         - `:name` - GenServer name for registration
-        - `:buffer_size` - (NIF backend only) max bytes to buffer per stdout line before
-          flushing; range `[0, 100_000]`, default: `0` (unbuffered)
+        - `:buffer_size` - (NIF backend only) stdout channel capacity in lines;
+          controls how many lines the NIF can buffer before applying backpressure.
+          Range `[1, 100_000]`; `0` or omitted uses the default of `1024` lines.
       """
       @spec start_link(keyword()) :: GenServer.on_start()
       def start_link(opts) do

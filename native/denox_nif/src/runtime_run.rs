@@ -9,7 +9,8 @@ use std::collections::HashMap;
 use std::sync::mpsc;
 use std::sync::Mutex;
 
-/// Default stdout buffer size (bounded channel capacity).
+/// Default stdout channel capacity in lines (bounded channel capacity).
+/// Used when buffer_size == 0 (i.e., the caller did not specify a value).
 const DEFAULT_BUFFER_SIZE: usize = 1024;
 
 pub struct RuntimeRunResource {
