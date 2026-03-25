@@ -384,6 +384,8 @@ defmodule Denox.Pool do
 
   # --- Private ---
 
+  @spec do_eval_file_async_decode(Denox.runtime(), String.t(), boolean()) ::
+          {:ok, term()} | {:error, String.t()}
   defp do_eval_file_async_decode(rt, code, transpile) do
     with {:ok, json} <-
            Denox.Telemetry.span(:eval_file_async_decode, fn ->
@@ -392,10 +394,12 @@ defmodule Denox.Pool do
          do: Denox.JSON.decode(json)
   end
 
+  @spec ts_extension?(String.t()) :: boolean()
   defp ts_extension?(path) do
     Path.extname(path) in [".ts", ".tsx", ".mts", ".cts"]
   end
 
+  @spec next_runtime(map()) :: {Denox.runtime(), map()}
   defp next_runtime(state) do
     rt = elem(state.runtimes, state.index)
     next_index = rem(state.index + 1, state.size)

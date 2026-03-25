@@ -127,6 +127,22 @@ defmodule DenoxPoolTest do
       Denox.Pool.exec(pool, "globalThis.asyncTriple = async (n) => n * 3")
       assert {:ok, "15"} = Task.await(Denox.Pool.call_async(pool, "asyncTriple", [5]))
     end
+
+    test "call returns error for undefined function" do
+      pool = :"test_pool_undef_#{:erlang.unique_integer([:positive])}"
+      start_supervised!({Denox.Pool, name: pool, size: 1})
+
+      assert {:error, msg} = Denox.Pool.call(pool, "nonexistentFunctionXyz")
+      assert msg =~ "not defined" or msg =~ "not a function" or msg =~ "TypeError"
+    end
+
+    test "call_async returns error for undefined function" do
+      pool = :"test_pool_undef_async_#{:erlang.unique_integer([:positive])}"
+      start_supervised!({Denox.Pool, name: pool, size: 1})
+
+      assert {:error, msg} = Task.await(Denox.Pool.call_async(pool, "nonexistentFunctionXyz", []))
+      assert msg =~ "not defined" or msg =~ "not a function" or msg =~ "TypeError"
+    end
   end
 
   describe "pool eval_file" do
@@ -148,6 +164,22 @@ defmodule DenoxPoolTest do
       path = Path.join(dir, "data.js")
       File.write!(path, "({answer: 42})")
       assert {:ok, %{"answer" => 42}} = Denox.Pool.eval_file_decode(pool, path)
+    end
+
+    test "eval_file returns error for missing file" do
+      pool = :"test_pool_file_miss_#{:erlang.unique_integer([:positive])}"
+      start_supervised!({Denox.Pool, name: pool, size: 1})
+
+      assert {:error, msg} = Denox.Pool.eval_file(pool, "/nonexistent_pool_test.js")
+      assert msg =~ "Failed to read"
+    end
+
+    test "eval_file_decode returns error for missing file" do
+      pool = :"test_pool_file_decode_miss_#{:erlang.unique_integer([:positive])}"
+      start_supervised!({Denox.Pool, name: pool, size: 1})
+
+      assert {:error, msg} = Denox.Pool.eval_file_decode(pool, "/nonexistent_pool_test.js")
+      assert msg =~ "Failed to read"
     end
   end
 
