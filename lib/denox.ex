@@ -436,12 +436,25 @@ defmodule Denox do
     end
   end
 
+  @valid_permission_keys ~w(
+    allow_read allow_write allow_net allow_env allow_run allow_ffi allow_sys
+    deny_read deny_write deny_net deny_env deny_run deny_ffi deny_sys
+  )a
+
   defp build_granular_permissions_json(perms) do
     granular =
       Enum.reduce(perms, %{mode: "granular"}, fn
-        {key, true}, acc -> Map.put(acc, Atom.to_string(key), true)
-        {key, values}, acc when is_list(values) -> Map.put(acc, Atom.to_string(key), values)
-        {_key, false}, acc -> acc
+        {key, true}, acc when key in @valid_permission_keys ->
+          Map.put(acc, Atom.to_string(key), true)
+
+        {key, values}, acc when key in @valid_permission_keys and is_list(values) ->
+          Map.put(acc, Atom.to_string(key), values)
+
+        {_key, false}, acc ->
+          acc
+
+        {key, _value}, _acc ->
+          raise ArgumentError, "unknown permission key: #{inspect(key)}"
       end)
 
     Denox.JSON.encode!(granular)
