@@ -232,7 +232,8 @@ defmodule Denox.Run.Base do
       Starts a runtime with `opts`, calls `fun` with the server PID, then
       stops the runtime — even if `fun` raises an exception.
 
-      Returns the value returned by `fun`, or `{:error, reason}` if the
+      Returns the value returned by `fun`. If `fun` returns an error tuple,
+      that tuple is passed through as-is. Returns `{:error, reason}` if the
       runtime failed to start.
 
       ## Example

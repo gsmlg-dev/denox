@@ -79,13 +79,23 @@ defmodule Denox.Pool do
     Task.async(fn -> GenServer.call(pool, {:eval_ts_async, code}, :infinity) end)
   end
 
-  @doc "Execute JavaScript code, ignoring the return value."
+  @doc """
+  Execute JavaScript code, ignoring the return value.
+
+  Returns `:ok` on success. Returns `{:error, message}` if the JavaScript
+  throws or if evaluation fails — callers must still handle the error.
+  """
   @spec exec(pool(), String.t()) :: :ok | {:error, String.t()}
   def exec(pool, code) do
     GenServer.call(pool, {:exec, code}, :infinity)
   end
 
-  @doc "Execute TypeScript code, ignoring the return value."
+  @doc """
+  Execute TypeScript code, ignoring the return value.
+
+  Returns `:ok` on success. Returns `{:error, message}` if the code
+  throws or if evaluation fails — callers must still handle the error.
+  """
   @spec exec_ts(pool(), String.t()) :: :ok | {:error, String.t()}
   def exec_ts(pool, code) do
     GenServer.call(pool, {:exec_ts, code}, :infinity)

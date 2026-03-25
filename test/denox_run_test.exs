@@ -1555,5 +1555,16 @@ defmodule DenoxRunTest do
 
       assert {:error, _reason} = result
     end
+
+    test "passes through error tuple returned by fun", %{tmp_dir: dir} do
+      script = write_script(dir, "noop_server2.ts", "await new Promise(() => {});")
+
+      result =
+        Denox.Run.with_runtime([file: script, permissions: :all], fn _pid ->
+          {:error, "something went wrong"}
+        end)
+
+      assert result == {:error, "something went wrong"}
+    end
   end
 end
