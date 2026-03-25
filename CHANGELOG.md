@@ -29,6 +29,12 @@
   `Denox.Run` and `Denox.CLI.Run`): starts a runtime, collects all stdout lines until
   exit or timeout, and returns them as `{:ok, [String.t()]}`. Uses the recv-poll pattern
   to avoid subscribe race conditions on fast-completing scripts.
+- `stream/1` convenience function added to `Denox.Run.Base`: returns a lazy
+  `Stream.resource/3` enumerable that yields stdout lines one-by-one, suitable for
+  large or streaming output. Halts on process exit or timeout.
+- `send_and_recv/3` convenience function added to `Denox.Run.Base`: one-shot
+  request/response helper for JSON-RPC over stdio (e.g. MCP servers). Sends a line
+  and returns the next line, wrapping `send/2` + `recv/2` in a single call.
 
 ## v0.5.0 — 2026-03-22
 
