@@ -37,7 +37,10 @@ defmodule Denox do
     - `:permissions` - permission mode:
       - `:all` — allow everything (default)
       - `:none` — deny everything (same as `sandbox: true`)
-      - keyword list — granular permissions (e.g. `[allow_net: true, allow_read: ["/tmp"]]`)
+      - keyword list — granular permissions. Supports both `allow_*` and `deny_*` keys.
+        E.g. `[allow_net: true, allow_read: ["/tmp"], deny_env: true]`. Values can be
+        `true` (blanket) or a list of strings (specific paths/hosts). `false` entries
+        are ignored. Unknown keys raise `ArgumentError`.
     - `:cache_dir` - on-disk cache directory for remote module fetches
     - `:import_map` - map of bare specifiers to resolved URLs/paths (e.g. `%{"lodash" => "https://esm.sh/lodash"}`)
     - `:callback_pid` - PID of the process that handles JS→Elixir callbacks (enables `Denox.callback()` in JS)
