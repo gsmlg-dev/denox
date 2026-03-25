@@ -2,6 +2,14 @@
 
 ### Changes (since previous release)
 
+- refactor: extract `Denox.Permissions` module to centralize NIF permission JSON
+  building — eliminates duplicate `@valid_permission_keys` and `build_permissions_json`
+  between `Denox` and `Denox.Run`
+- refactor: deduplicate `ts_extension?/1` between `Denox` and `Denox.Pool`
+- test: add unit tests for `Denox.Permissions` (8 tests covering all code paths)
+- test: add permission enforcement tests verifying Deno actually restricts env and
+  file read access under `permissions: :none` and allows under `:all` / granular
+
 - fix: tag deno-dependent tests with `:deno` to skip in CI
 - fix(ci): set `MIX_ENV=test` for E2E workflow
 - refactor: replace JS polyfill I/O with native `deno_io` pipe bridging in `runtime_run`
