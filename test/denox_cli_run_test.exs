@@ -683,5 +683,19 @@ defmodule DenoxCLIRunTest do
         assert line == "hello_env"
       end
     end
+
+    test "raises on invalid env value type" do
+      Process.flag(:trap_exit, true)
+
+      result =
+        CLI.Run.start_link(
+          file: "/nonexistent.ts",
+          permissions: :all,
+          env: %{"KEY" => 42}
+        )
+
+      assert {:error, {%ArgumentError{message: msg}, _}} = result
+      assert msg =~ "env values must be atoms or binaries"
+    end
   end
 end

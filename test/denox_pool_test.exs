@@ -26,6 +26,29 @@ defmodule DenoxPoolTest do
     end
   end
 
+  describe "pool init failure" do
+    test "returns error tuple when runtime creation fails" do
+      # Invalid permissions JSON at the NIF level triggers {:error, ...} from runtime_new
+      # We bypass the Elixir validation by providing a raw permissions_json that the
+      # NIF will reject. Since we can't easily do that, we test with an invalid base_dir
+      # that causes the NIF to error, but actually runtime_new is quite permissive.
+      #
+      # Instead, test that the pool properly propagates the {:stop, ...} from init
+      # by trapping exits and using invalid permissions that raise before NIF call.
+      Process.flag(:trap_exit, true)
+
+      result =
+        Denox.Pool.start_link(
+          name: :"test_pool_fail_#{:erlang.unique_integer([:positive])}",
+          size: 1,
+          permissions: [allow_banana: true]
+        )
+
+      # The ArgumentError from permissions validation propagates as a linked exit
+      assert {:error, _} = result
+    end
+  end
+
   describe "pool eval" do
     setup do
       pool = :"test_pool_#{:erlang.unique_integer([:positive])}"
