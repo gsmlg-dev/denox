@@ -19,6 +19,11 @@ pub struct RuntimeRunResource {
     alive: std::sync::Arc<std::sync::atomic::AtomicBool>,
 }
 
+// SAFETY: All fields are thread-safe:
+// - mpsc::Sender is Send+Sync
+// - Mutex<mpsc::Receiver> and Mutex<Option<mpsc::Sender>> are Send+Sync
+// - Arc<AtomicBool> is Send+Sync
+// The MainWorker lives on a dedicated thread and is never shared.
 unsafe impl Send for RuntimeRunResource {}
 unsafe impl Sync for RuntimeRunResource {}
 
@@ -151,7 +156,11 @@ pub fn runtime_run(
 
             let _guard = tokio_rt.enter();
 
-            // Set environment variables for this runtime
+            // Set environment variables for this runtime.
+            // NOTE: set_var modifies the process-wide environment, which can race
+            // when multiple runtime_run instances start concurrently with different
+            // env maps. This is a known limitation — Deno's MainWorker reads env
+            // vars from the process environment via Deno.env.get().
             for (key, value) in env_vars.iter() {
                 std::env::set_var(key, value);
             }
@@ -243,49 +252,37 @@ pub fn runtime_run(
             }
 
             // Run the event loop until completion or stop signal.
-            let completed = tokio_rt.block_on(async {
-                tokio::time::timeout(
-                    std::time::Duration::from_secs(1),
-                    worker.run_event_loop(false),
-                )
-                .await
-            });
+            // Polls the stop channel every 100ms so runtime_run_stop() is
+            // respected promptly for long-running scripts (servers, daemons).
+            // For quick scripts the biased select picks up completion immediately
+            // without waiting for the sleep.
+            tokio_rt.block_on(async {
+                let event_loop = worker.run_event_loop(false);
+                tokio::pin!(event_loop);
 
-            match completed {
-                Ok(Ok(())) => {
-                    // Event loop completed — script finished naturally
-                }
-                Ok(Err(e)) => {
-                    eprintln!("Event loop error: {}", e);
-                }
-                Err(_timeout) => {
-                    // Long-running script (server, daemon, etc.)
-                    tokio_rt.block_on(async {
-                        let event_loop = worker.run_event_loop(false);
-                        tokio::pin!(event_loop);
+                loop {
+                    match stop_rx.try_recv() {
+                        Ok(()) | Err(mpsc::TryRecvError::Disconnected) => break,
+                        Err(mpsc::TryRecvError::Empty) => {}
+                    }
 
-                        loop {
-                            match stop_rx.try_recv() {
-                                Ok(()) | Err(mpsc::TryRecvError::Disconnected) => break,
-                                Err(mpsc::TryRecvError::Empty) => {}
-                            }
-
-                            tokio::select! {
-                                biased;
-                                result = &mut event_loop => {
-                                    if let Err(e) = result {
-                                        eprintln!("Event loop error: {}", e);
-                                    }
-                                    break;
-                                }
-                                _ = tokio::time::sleep(std::time::Duration::from_millis(100)) => {
-                                    continue;
+                    tokio::select! {
+                        biased;
+                        result = &mut event_loop => {
+                            if let Err(e) = result {
+                                // Broken pipe is expected when the stdout consumer
+                                // disconnects (e.g. Enum.take/2 on a stream).
+                                let msg = e.to_string();
+                                if !msg.contains("Broken pipe") && !msg.contains("os error 32") {
+                                    eprintln!("Event loop error: {}", e);
                                 }
                             }
+                            break;
                         }
-                    });
+                        _ = tokio::time::sleep(std::time::Duration::from_millis(100)) => {}
+                    }
                 }
-            }
+            });
         }));
 
         if let Err(panic_info) = result {
