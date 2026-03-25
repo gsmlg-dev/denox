@@ -166,6 +166,18 @@ defmodule DenoxCLIRunFakeTest do
       {:ok, _} = CLIRun.recv(pid, timeout: 5000)
       CLIRun.stop(pid)
     end
+
+    test "covers deny_* permission flag" do
+      write_fake_deno(~s[echo "ok"])
+
+      # permissions: [deny_net: true] → permission_to_flag({:deny_net, true})
+      # → flag_name(:deny_net) → "--deny-net"
+      {:ok, pid} =
+        CLIRun.start_link(file: "test.ts", permissions: [deny_net: true])
+
+      {:ok, _} = CLIRun.recv(pid, timeout: 5000)
+      CLIRun.stop(pid)
+    end
   end
 
   describe "resolve_specifier" do
