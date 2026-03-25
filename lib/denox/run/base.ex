@@ -3,9 +3,24 @@ defmodule Denox.Run.Base do
   Shared GenServer dispatch logic for Run modules.
 
   This module provides a `__using__` macro that injects GenServer boilerplate,
-  a common public API (`send/2`, `recv/2`, `subscribe/1`, `unsubscribe/1`,
-  `alive?/1`, `stop/1`), and stdout dispatch logic for both the NIF-backed
+  a common public API, and stdout dispatch logic for both the NIF-backed
   `Denox.Run` and the CLI-backed `Denox.CLI.Run`.
+
+  ## Public API (injected into using modules)
+
+  **Lifecycle:** `start_link/1`, `stop/1`
+
+  **I/O:** `send/2`, `recv/2`, `send_and_recv/3`
+
+  **Pub/Sub:** `subscribe/1`, `unsubscribe/1`
+
+  **Introspection:** `alive?/1`, `os_pid/1`
+
+  **Convenience (one-shot):**
+    - `capture/1` — start, collect all lines, stop; returns `{:ok, [String.t()]}`
+    - `stream/1` — start + lazy `Stream` (auto-stops on halt)
+    - `stream_from/2` — lazy `Stream` from an existing PID (caller manages lifecycle)
+    - `with_runtime/2` — start + user function + guaranteed stop via `after`
 
   ## Implementing a Backend
 
