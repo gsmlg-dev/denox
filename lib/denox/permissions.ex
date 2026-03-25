@@ -4,13 +4,16 @@ defmodule Denox.Permissions do
   # Used by both `Denox` and `Denox.Run` to build the permissions JSON
   # sent to the Rust NIF layer.
 
+  @typedoc "Permission configuration accepted by `Denox.runtime/1` and `Denox.Run.start_link/1`."
+  @type t :: :all | :none | nil | keyword()
+
   @valid_keys ~w(
     allow_read allow_write allow_net allow_env allow_run allow_ffi allow_sys
     deny_read deny_write deny_net deny_env deny_run deny_ffi deny_sys
   )a
 
   @doc false
-  @spec to_nif_json(:all | :none | nil | keyword()) :: String.t()
+  @spec to_nif_json(t()) :: String.t()
   def to_nif_json(:all), do: Denox.JSON.encode!(%{mode: "allow_all"})
   def to_nif_json(:none), do: Denox.JSON.encode!(%{mode: "deny_all"})
   def to_nif_json(nil), do: ""
