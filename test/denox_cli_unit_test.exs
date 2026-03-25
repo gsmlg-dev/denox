@@ -86,5 +86,28 @@ defmodule DenoxCLIUnitTest do
 
       assert {:ok, ^cli_path} = Denox.CLI.find_deno()
     end
+
+    test "returns system deno when deno IS on PATH (system takes priority over bundled CLI)" do
+      # Create a fake deno binary in a temp dir and prepend to PATH
+      tmp_dir =
+        Path.join(System.tmp_dir!(), "denox-findeno-test-#{System.unique_integer([:positive])}")
+
+      fake_deno = Path.join(tmp_dir, "deno")
+
+      File.mkdir_p!(tmp_dir)
+      File.write!(fake_deno, "#!/bin/sh\necho fake-system-deno")
+      File.chmod!(fake_deno, 0o755)
+
+      original_path = System.get_env("PATH", "")
+      System.put_env("PATH", "#{tmp_dir}:#{original_path}")
+
+      on_exit(fn ->
+        System.put_env("PATH", original_path)
+        File.rm_rf!(tmp_dir)
+      end)
+
+      # System deno is found — should return it regardless of bundled CLI config
+      assert {:ok, ^fake_deno} = Denox.CLI.find_deno()
+    end
   end
 end

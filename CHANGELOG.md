@@ -2,6 +2,9 @@
 
 ### Changes (since previous release)
 
+- test: add `Denox.CLI.find_deno/0` system PATH success test — verifies system deno
+  binary is found and returned as `{:ok, path}` when present on PATH, taking priority
+  over the bundled CLI (exercises the first branch of the 3-step fallback chain)
 - test: add `Denox.CLI.handle_response/2` edge case coverage — `:exit` reason tuples
   (e.g., connection refused caught by `download/2`) and non-200 responses with empty
   body are both handled and produce readable error messages
