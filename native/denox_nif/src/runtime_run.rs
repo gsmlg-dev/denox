@@ -135,137 +135,171 @@ pub fn runtime_run(
     });
 
     std::thread::spawn(move || {
-        let tokio_rt = tokio::runtime::Builder::new_current_thread()
-            .enable_all()
-            .build()
-            .expect("Failed to create tokio runtime");
-
-        let _guard = tokio_rt.enter();
-
-        // Set environment variables for this runtime
-        for (key, value) in env_vars.iter() {
-            std::env::set_var(key, value);
-        }
-
-        let main_module_url = if resolved.starts_with("npm:") || resolved.starts_with("jsr:") {
-            let cwd = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("/"));
-            deno_core::url::Url::from_directory_path(&cwd)
-                .unwrap_or_else(|_| deno_core::url::Url::parse("file:///").unwrap())
-        } else if resolved.starts_with("http://") || resolved.starts_with("https://") {
-            deno_core::url::Url::parse(&resolved).unwrap()
-        } else {
-            let path = std::path::Path::new(&resolved)
-                .canonicalize()
-                .unwrap_or_else(|_| std::path::PathBuf::from(&resolved));
-            deno_core::url::Url::from_file_path(&path)
-                .unwrap_or_else(|_| deno_core::url::Url::parse("file:///").unwrap())
-        };
-
-        // Configure MainWorker with piped stdin/stdout via deno_io
-        let mut worker = tokio_rt.block_on(async {
-            let module_loader =
-                std::rc::Rc::new(ts_loader::TsModuleLoader::new(None, HashMap::new()));
-
-            let create_web_worker_cb =
-                std::sync::Arc::new(|_| panic!("Web workers are not supported in Denox"));
-
-            let fs: deno_fs::FileSystemRc = std::sync::Arc::new(deno_fs::RealFs);
-            let permission_desc_parser =
-                std::sync::Arc::new(RuntimePermissionDescriptorParser::new(fs.clone()));
-
-            let services = WorkerServiceOptions {
-                module_loader,
-                permissions: PermissionsContainer::new(permission_desc_parser, permissions),
-                blob_store: Default::default(),
-                broadcast_channel: Default::default(),
-                feature_checker: Default::default(),
-                fs: fs.clone(),
-                node_services: None,
-                npm_process_state_provider: None,
-                root_cert_store_provider: None,
-                shared_array_buffer_store: None,
-                compiled_wasm_module_store: None,
-                v8_code_cache: None,
+        // Wrap the entire thread body so that panics are caught and
+        // the alive flag is always set to false on exit.
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            let tokio_rt = match tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+            {
+                Ok(rt) => rt,
+                Err(e) => {
+                    eprintln!("Failed to create tokio runtime: {}", e);
+                    return;
+                }
             };
 
-            let mut bootstrap = BootstrapOptions::default();
-            bootstrap.args = args;
+            let _guard = tokio_rt.enter();
 
-            let options = WorkerOptions {
-                create_web_worker_cb,
-                bootstrap,
-                stdio: deno_io::Stdio {
-                    stdin: deno_io::StdioPipe::file(stdin_deno_read),
-                    stdout: deno_io::StdioPipe::file(stdout_deno_write),
-                    stderr: deno_io::StdioPipe::inherit(),
-                },
-                ..Default::default()
-            };
-
-            MainWorker::bootstrap_from_options(main_module_url.clone(), services, options)
-        });
-
-        // Load and run the main module
-        let specifier_url = if resolved.starts_with("npm:") || resolved.starts_with("jsr:") {
-            deno_core::url::Url::parse(&resolved).unwrap()
-        } else {
-            main_module_url.clone()
-        };
-
-        let load_result =
-            tokio_rt.block_on(async { worker.execute_main_module(&specifier_url).await });
-
-        if let Err(e) = load_result {
-            eprintln!("Error loading module: {}", e);
-            alive_clone.store(false, std::sync::atomic::Ordering::SeqCst);
-            return;
-        }
-
-        // Run the event loop until completion or stop signal.
-        let completed = tokio_rt.block_on(async {
-            tokio::time::timeout(
-                std::time::Duration::from_secs(1),
-                worker.run_event_loop(false),
-            )
-            .await
-        });
-
-        match completed {
-            Ok(Ok(())) => {
-                // Event loop completed — script finished naturally
+            // Set environment variables for this runtime
+            for (key, value) in env_vars.iter() {
+                std::env::set_var(key, value);
             }
-            Ok(Err(e)) => {
-                eprintln!("Event loop error: {}", e);
-            }
-            Err(_timeout) => {
-                // Long-running script (server, daemon, etc.)
-                tokio_rt.block_on(async {
-                    let event_loop = worker.run_event_loop(false);
-                    tokio::pin!(event_loop);
 
-                    loop {
-                        match stop_rx.try_recv() {
-                            Ok(()) | Err(mpsc::TryRecvError::Disconnected) => break,
-                            Err(mpsc::TryRecvError::Empty) => {}
-                        }
+            let fallback_url = deno_core::url::Url::parse("file:///").expect("static URL parse");
 
-                        tokio::select! {
-                            biased;
-                            result = &mut event_loop => {
-                                if let Err(e) = result {
-                                    eprintln!("Event loop error: {}", e);
-                                }
-                                break;
-                            }
-                            _ = tokio::time::sleep(std::time::Duration::from_millis(100)) => {
-                                continue;
-                            }
-                        }
+            let main_module_url = if resolved.starts_with("npm:") || resolved.starts_with("jsr:") {
+                let cwd = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("/"));
+                deno_core::url::Url::from_directory_path(&cwd)
+                    .unwrap_or_else(|_| fallback_url.clone())
+            } else if resolved.starts_with("http://") || resolved.starts_with("https://") {
+                match deno_core::url::Url::parse(&resolved) {
+                    Ok(url) => url,
+                    Err(e) => {
+                        eprintln!("Invalid URL '{}': {}", resolved, e);
+                        return;
                     }
-                });
+                }
+            } else {
+                let path = std::path::Path::new(&resolved)
+                    .canonicalize()
+                    .unwrap_or_else(|_| std::path::PathBuf::from(&resolved));
+                deno_core::url::Url::from_file_path(&path).unwrap_or_else(|_| fallback_url.clone())
+            };
+
+            // Configure MainWorker with piped stdin/stdout via deno_io
+            let mut worker = tokio_rt.block_on(async {
+                let module_loader =
+                    std::rc::Rc::new(ts_loader::TsModuleLoader::new(None, HashMap::new()));
+
+                let create_web_worker_cb =
+                    std::sync::Arc::new(|_| panic!("Web workers are not supported in Denox"));
+
+                let fs: deno_fs::FileSystemRc = std::sync::Arc::new(deno_fs::RealFs);
+                let permission_desc_parser =
+                    std::sync::Arc::new(RuntimePermissionDescriptorParser::new(fs.clone()));
+
+                let services = WorkerServiceOptions {
+                    module_loader,
+                    permissions: PermissionsContainer::new(permission_desc_parser, permissions),
+                    blob_store: Default::default(),
+                    broadcast_channel: Default::default(),
+                    feature_checker: Default::default(),
+                    fs: fs.clone(),
+                    node_services: None,
+                    npm_process_state_provider: None,
+                    root_cert_store_provider: None,
+                    shared_array_buffer_store: None,
+                    compiled_wasm_module_store: None,
+                    v8_code_cache: None,
+                };
+
+                let mut bootstrap = BootstrapOptions::default();
+                bootstrap.args = args;
+
+                let options = WorkerOptions {
+                    create_web_worker_cb,
+                    bootstrap,
+                    stdio: deno_io::Stdio {
+                        stdin: deno_io::StdioPipe::file(stdin_deno_read),
+                        stdout: deno_io::StdioPipe::file(stdout_deno_write),
+                        stderr: deno_io::StdioPipe::inherit(),
+                    },
+                    ..Default::default()
+                };
+
+                MainWorker::bootstrap_from_options(main_module_url.clone(), services, options)
+            });
+
+            // Load and run the main module
+            let specifier_url = if resolved.starts_with("npm:") || resolved.starts_with("jsr:") {
+                match deno_core::url::Url::parse(&resolved) {
+                    Ok(url) => url,
+                    Err(e) => {
+                        eprintln!("Invalid specifier URL '{}': {}", resolved, e);
+                        return;
+                    }
+                }
+            } else {
+                main_module_url.clone()
+            };
+
+            let load_result =
+                tokio_rt.block_on(async { worker.execute_main_module(&specifier_url).await });
+
+            if let Err(e) = load_result {
+                eprintln!("Error loading module: {}", e);
+                return;
             }
+
+            // Run the event loop until completion or stop signal.
+            let completed = tokio_rt.block_on(async {
+                tokio::time::timeout(
+                    std::time::Duration::from_secs(1),
+                    worker.run_event_loop(false),
+                )
+                .await
+            });
+
+            match completed {
+                Ok(Ok(())) => {
+                    // Event loop completed — script finished naturally
+                }
+                Ok(Err(e)) => {
+                    eprintln!("Event loop error: {}", e);
+                }
+                Err(_timeout) => {
+                    // Long-running script (server, daemon, etc.)
+                    tokio_rt.block_on(async {
+                        let event_loop = worker.run_event_loop(false);
+                        tokio::pin!(event_loop);
+
+                        loop {
+                            match stop_rx.try_recv() {
+                                Ok(()) | Err(mpsc::TryRecvError::Disconnected) => break,
+                                Err(mpsc::TryRecvError::Empty) => {}
+                            }
+
+                            tokio::select! {
+                                biased;
+                                result = &mut event_loop => {
+                                    if let Err(e) = result {
+                                        eprintln!("Event loop error: {}", e);
+                                    }
+                                    break;
+                                }
+                                _ = tokio::time::sleep(std::time::Duration::from_millis(100)) => {
+                                    continue;
+                                }
+                            }
+                        }
+                    });
+                }
+            }
+        }));
+
+        if let Err(panic_info) = result {
+            let msg = if let Some(s) = panic_info.downcast_ref::<&str>() {
+                s.to_string()
+            } else if let Some(s) = panic_info.downcast_ref::<String>() {
+                s.clone()
+            } else {
+                "unknown panic".to_string()
+            };
+            eprintln!("Denox runtime_run thread panicked: {}", msg);
         }
 
+        // Always mark as not alive on thread exit, regardless of success or panic
         alive_clone.store(false, std::sync::atomic::Ordering::SeqCst);
     });
 

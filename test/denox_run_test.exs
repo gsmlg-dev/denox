@@ -1088,4 +1088,106 @@ defmodule DenoxRunTest do
       Denox.Run.stop(name)
     end
   end
+
+  describe "pipe-based I/O edge cases" do
+    test "empty lines are preserved", %{tmp_dir: dir} do
+      script =
+        write_script(dir, "empty_lines.ts", """
+        console.log("");
+        console.log("middle");
+        console.log("");
+        """)
+
+      {:ok, pid} = Denox.Run.start_link(file: script, permissions: :all)
+
+      {:ok, line1} = Denox.Run.recv(pid, timeout: 5000)
+      {:ok, line2} = Denox.Run.recv(pid, timeout: 5000)
+      {:ok, line3} = Denox.Run.recv(pid, timeout: 5000)
+
+      assert line1 == ""
+      assert line2 == "middle"
+      assert line3 == ""
+    end
+
+    test "Unicode output is preserved", %{tmp_dir: dir} do
+      script =
+        write_script(dir, "unicode.ts", """
+        console.log("hello 世界 🌍");
+        console.log("Ελληνικά");
+        console.log("日本語テスト");
+        """)
+
+      {:ok, pid} = Denox.Run.start_link(file: script, permissions: :all)
+
+      {:ok, line1} = Denox.Run.recv(pid, timeout: 5000)
+      {:ok, line2} = Denox.Run.recv(pid, timeout: 5000)
+      {:ok, line3} = Denox.Run.recv(pid, timeout: 5000)
+
+      assert line1 == "hello 世界 🌍"
+      assert line2 == "Ελληνικά"
+      assert line3 == "日本語テスト"
+    end
+
+    test "multiple console.log arguments are space-separated", %{tmp_dir: dir} do
+      script =
+        write_script(dir, "multi_args.ts", ~s[console.log("a", "b", "c");])
+
+      {:ok, pid} = Denox.Run.start_link(file: script, permissions: :all)
+
+      {:ok, line} = Denox.Run.recv(pid, timeout: 5000)
+      assert line == "a b c"
+    end
+
+    test "Deno.stdout.write works with pipe-based I/O", %{tmp_dir: dir} do
+      script =
+        write_script(dir, "stdout_write.ts", """
+        const encoder = new TextEncoder();
+        await Deno.stdout.write(encoder.encode("line1\\n"));
+        await Deno.stdout.write(encoder.encode("line2\\n"));
+        """)
+
+      {:ok, pid} = Denox.Run.start_link(file: script, permissions: :all)
+
+      {:ok, line1} = Denox.Run.recv(pid, timeout: 5000)
+      {:ok, line2} = Denox.Run.recv(pid, timeout: 5000)
+
+      assert line1 == "line1"
+      assert line2 == "line2"
+    end
+
+    test "long lines are handled correctly", %{tmp_dir: dir} do
+      script =
+        write_script(dir, "long_line.ts", """
+        const long = "x".repeat(10000);
+        console.log(long);
+        """)
+
+      {:ok, pid} = Denox.Run.start_link(file: script, permissions: :all)
+
+      {:ok, line} = Denox.Run.recv(pid, timeout: 10_000)
+      assert String.length(line) == 10000
+      assert line == String.duplicate("x", 10000)
+    end
+
+    test "rapid successive output is buffered correctly", %{tmp_dir: dir} do
+      script =
+        write_script(dir, "rapid.ts", """
+        for (let i = 0; i < 100; i++) {
+          console.log(`line-${i}`);
+        }
+        """)
+
+      {:ok, pid} = Denox.Run.start_link(file: script, permissions: :all)
+
+      lines =
+        Enum.map(0..99, fn _ ->
+          {:ok, line} = Denox.Run.recv(pid, timeout: 10_000)
+          line
+        end)
+
+      assert length(lines) == 100
+      assert Enum.at(lines, 0) == "line-0"
+      assert Enum.at(lines, 99) == "line-99"
+    end
+  end
 end
