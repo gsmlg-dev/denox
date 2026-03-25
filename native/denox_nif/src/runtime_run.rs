@@ -133,7 +133,17 @@ pub fn runtime_run(
                         break;
                     }
                 }
-                Err(_) => break,
+                Err(e) => {
+                    // Only log if it's not a normal pipe close (broken pipe / EOF).
+                    // Broken pipe errors are expected when the runtime exits.
+                    let kind = e.kind();
+                    if kind != std::io::ErrorKind::BrokenPipe
+                        && kind != std::io::ErrorKind::UnexpectedEof
+                    {
+                        eprintln!("[denox] stdout pipe read error: {e}");
+                    }
+                    break;
+                }
             }
         }
         // Pipe closed — mark as not alive if the event loop thread hasn't already

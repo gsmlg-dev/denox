@@ -5,6 +5,11 @@
 - test: add `unsubscribe/1` idempotency tests — unsubscribing a PID that was never
   subscribed, and calling unsubscribe twice after one subscribe, both return `:ok`
   without error (verified against `Denox.Run.Base.__handle_call__/4` logic)
+- test: add `stream_from/2` edge case — empty list returned when server exits
+  immediately without producing any output (complements `stream/1` no-output test)
+- fix(rust): log unexpected I/O errors in stdout pipe reader thread instead of
+  silently discarding them; normal pipe-close errors (BrokenPipe, UnexpectedEof)
+  remain silent as they are expected on runtime exit
 
 - refactor: extract `Denox.Permissions` module to centralize NIF permission JSON
   building — eliminates duplicate `@valid_permission_keys` and `build_permissions_json`

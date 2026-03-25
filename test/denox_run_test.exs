@@ -1491,6 +1491,14 @@ defmodule DenoxRunTest do
       Denox.Run.stop(pid)
     end
 
+    test "returns empty list when server exits immediately without output", %{tmp_dir: dir} do
+      script = write_script(dir, "silent_exit.ts", "// exits without producing any output")
+
+      {:ok, pid} = Denox.Run.start_link(file: script, permissions: :all)
+      lines = Denox.Run.stream_from(pid, timeout: 5000) |> Enum.to_list()
+      assert lines == []
+    end
+
     test "works as part of with_runtime/2 for request-response pattern", %{tmp_dir: dir} do
       script =
         write_script(dir, "echo_three.ts", """
