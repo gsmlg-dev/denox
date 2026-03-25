@@ -9,12 +9,28 @@ defmodule Denox.Pool do
 
       # In your supervision tree
       children = [
-        {Denox.Pool, name: :js_pool, size: 4}
+        {Denox.Pool, name: :js_pool, size: 4, permissions: :all}
       ]
 
       # Then use the pool
       {:ok, result} = Denox.Pool.eval(:js_pool, "1 + 2")
       {:ok, result} = Denox.Pool.eval_ts(:js_pool, "const x: number = 42; x")
+
+  ## Pre-loading shared code
+
+  Use `load_npm/2` to load a bundled JS file into all pool runtimes at once.
+  This is the recommended way to share npm packages across a pool:
+
+      Denox.Npm.bundle!("npm:zod@3.22", "priv/bundles/zod.js")
+      :ok = Denox.Pool.load_npm(:js_pool, "priv/bundles/zod.js")
+
+  Or use `exec/2` to initialise shared globals:
+
+      :ok = Denox.Pool.exec(:js_pool, "globalThis.helper = (x) => x * 2")
+
+  Note that each runtime in the pool has independent state, so mutations made
+  via `exec/2` are distributed round-robin and may not reach all runtimes.
+  Use `load_npm/2` (which broadcasts to all runtimes) for shared initialisation.
   """
   use GenServer
 
