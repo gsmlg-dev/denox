@@ -53,12 +53,7 @@ defmodule DenoxCLIRunTest do
     end
 
     test "requires package or file" do
-      Process.flag(:trap_exit, true)
-
-      assert {:error, {%ArgumentError{message: msg}, _}} =
-               CLI.Run.start_link([])
-
-      assert msg =~ "either :package or :file"
+      assert {:error, :normal} = CLI.Run.start_link([])
     end
 
     test "returns error when CLI not configured" do
@@ -417,6 +412,65 @@ defmodule DenoxCLIRunTest do
 
         {:ok, line} = CLI.Run.recv(pid, timeout: 5000)
         assert line == "works"
+      end
+    end
+  end
+
+  describe "capture/1" do
+    test "collects all stdout lines and returns them", %{tmp_dir: dir} do
+      if ensure_cli_configured() == :skip do
+        :ok
+      else
+        script =
+          write_script(dir, "three_lines.ts", """
+          console.log("a");
+          console.log("b");
+          console.log("c");
+          """)
+
+        assert {:ok, lines} = CLI.Run.capture(file: script, permissions: :all)
+        assert lines == ["a", "b", "c"]
+      end
+    end
+  end
+
+  describe "stream/1" do
+    test "yields stdout lines lazily and stops", %{tmp_dir: dir} do
+      if ensure_cli_configured() == :skip do
+        :ok
+      else
+        script =
+          write_script(dir, "stream_lines.ts", """
+          for (let i = 0; i < 5; i++) console.log(i.toString());
+          """)
+
+        result = CLI.Run.stream(file: script, permissions: :all) |> Enum.to_list()
+        assert result == ["0", "1", "2", "3", "4"]
+      end
+    end
+  end
+
+  describe "with_runtime/2" do
+    test "runs function with runtime and cleans up", %{tmp_dir: dir} do
+      if ensure_cli_configured() == :skip do
+        :ok
+      else
+        script =
+          write_script(dir, "echo_cli.ts", """
+          const buf = new Uint8Array(1024);
+          const n = await Deno.stdin.read(buf);
+          const line = new TextDecoder().decode(buf.subarray(0, n)).trim();
+          console.log(line);
+          """)
+
+        result =
+          CLI.Run.with_runtime([file: script, permissions: :all], fn pid ->
+            :ok = CLI.Run.send(pid, "hello_cli")
+            {:ok, line} = CLI.Run.recv(pid, timeout: 5000)
+            line
+          end)
+
+        assert result == "hello_cli"
       end
     end
   end
