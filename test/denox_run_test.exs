@@ -1342,6 +1342,67 @@ defmodule DenoxRunTest do
     end
   end
 
+  describe "stream_from/2" do
+    @tag :deno
+    test "yields lines from an already-running server", %{tmp_dir: dir} do
+      script =
+        write_script(dir, "three_output.ts", """
+        console.log("x");
+        console.log("y");
+        console.log("z");
+        """)
+
+      {:ok, pid} = Denox.Run.start_link(file: script, permissions: :all)
+      lines = Denox.Run.stream_from(pid, timeout: 5000) |> Enum.to_list()
+      assert lines == ["x", "y", "z"]
+    end
+
+    @tag :deno
+    test "halts when runtime exits without consuming all output", %{tmp_dir: dir} do
+      script =
+        write_script(dir, "five_lines.ts", """
+        for (let i = 0; i < 5; i++) console.log(i.toString());
+        """)
+
+      {:ok, pid} = Denox.Run.start_link(file: script, permissions: :all)
+      lines = Denox.Run.stream_from(pid) |> Enum.take(2)
+      assert length(lines) == 2
+      Denox.Run.stop(pid)
+    end
+
+    @tag :deno
+    test "does not stop the server when the stream halts", %{tmp_dir: dir} do
+      script = write_script(dir, "noop_forever.ts", "await new Promise(() => {});")
+
+      {:ok, pid} = Denox.Run.start_link(file: script, permissions: :all)
+      # stream halts on timeout, not by stopping the server
+      _empty = Denox.Run.stream_from(pid, timeout: 200) |> Enum.to_list()
+      assert Process.alive?(pid)
+      Denox.Run.stop(pid)
+    end
+
+    @tag :deno
+    test "works as part of with_runtime/2 for request-response pattern", %{tmp_dir: dir} do
+      script =
+        write_script(dir, "echo_three.ts", """
+        const decoder = new TextDecoder();
+        const buf = new Uint8Array(4096);
+        const n = await Deno.stdin.read(buf);
+        const input = decoder.decode(buf.subarray(0, n!)).trim();
+        console.log("got: " + input);
+        console.log("done");
+        """)
+
+      result =
+        Denox.Run.with_runtime([file: script, permissions: :all], fn pid ->
+          :ok = Denox.Run.send(pid, "test_input")
+          Denox.Run.stream_from(pid, timeout: 5000) |> Enum.to_list()
+        end)
+
+      assert result == ["got: test_input", "done"]
+    end
+  end
+
   describe "send_and_recv/3" do
     test "sends data and receives the response in one call", %{tmp_dir: dir} do
       script =

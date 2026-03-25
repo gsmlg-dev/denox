@@ -168,6 +168,45 @@ defmodule Denox.Run.Base do
       end
 
       @doc """
+      Stream stdout lines from an already-running server as a lazy `Stream`.
+
+      Unlike `stream/1`, which starts a new runtime, `stream_from/2` works
+      with an existing server PID. The stream halts when the runtime exits or
+      a per-line timeout is reached. The server is **not** stopped when the
+      stream halts — the caller retains ownership.
+
+      This pairs naturally with `with_runtime/2` when you want lazy output
+      enumeration after sending input:
+
+          Denox.Run.with_runtime([file: "script.ts", permissions: :all], fn pid ->
+            :ok = Denox.Run.send(pid, Jason.encode!(request))
+            Denox.Run.stream_from(pid) |> Enum.to_list()
+          end)
+
+      ## Options
+
+        - `:timeout` - per-line receive timeout in milliseconds (default: `5000`).
+          If no new line arrives within this window, the stream halts.
+
+      """
+      @spec stream_from(GenServer.server(), keyword()) :: Enumerable.t()
+      def stream_from(server, opts \\ []) do
+        timeout = Keyword.get(opts, :timeout, 5_000)
+
+        Stream.resource(
+          fn -> server end,
+          fn pid ->
+            case recv(pid, timeout: timeout) do
+              {:ok, line} -> {[line], pid}
+              {:error, :closed} -> {:halt, pid}
+              {:error, :timeout} -> {:halt, pid}
+            end
+          end,
+          fn _pid -> :ok end
+        )
+      end
+
+      @doc """
       Execute a function with a managed runtime, ensuring cleanup on exit.
 
       Starts a runtime with `opts`, calls `fun` with the server PID, then
