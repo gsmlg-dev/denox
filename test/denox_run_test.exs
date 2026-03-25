@@ -582,6 +582,16 @@ defmodule DenoxRunTest do
       {:ok, line} = Denox.Run.recv(pid, timeout: 5000)
       assert line == "denied"
     end
+
+    test "unknown permission key raises ArgumentError" do
+      {_pid, ref} =
+        spawn_monitor(fn ->
+          Denox.Run.start_link(file: "test.ts", permissions: [bogus_perm: true])
+        end)
+
+      assert_receive {:DOWN, ^ref, :process, _pid, {%ArgumentError{message: msg}, _stack}}, 1000
+      assert msg =~ "unknown permission key"
+    end
   end
 
   describe "os_pid/1" do
