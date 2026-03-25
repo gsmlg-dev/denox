@@ -107,6 +107,24 @@ defmodule DenoxCLIInternalsTest do
       assert msg =~ "timeout"
     end
 
+    test "returns error for :exit reason (e.g. connection refused caught by download/2)" do
+      # The download/2 function catches `:exit, reason` and wraps it as
+      # {:error, {:exit, reason}}. This tests that handle_response/2 handles
+      # such tuples and produces a readable error message.
+      response = {:error, {:exit, {:econnrefused, []}}}
+
+      assert {:error, msg} = Denox.CLI.handle_response(response, 5)
+      assert msg =~ "Download failed"
+      assert msg =~ "econnrefused"
+    end
+
+    test "returns error for non-200 status with empty body" do
+      response = {:ok, {{"HTTP/1.1", 500, "Internal Server Error"}, [], ""}}
+
+      assert {:error, msg} = Denox.CLI.handle_response(response, 5)
+      assert msg =~ "Download failed (HTTP 500)"
+    end
+
     test "follows redirect with Location header" do
       # A redirect with a Location header invokes download/2 recursively.
       # Use redirects_left=0 to trigger "Too many redirects" on follow.

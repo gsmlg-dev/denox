@@ -2,6 +2,9 @@
 
 ### Changes (since previous release)
 
+- test: add `Denox.CLI.handle_response/2` edge case coverage — `:exit` reason tuples
+  (e.g., connection refused caught by `download/2`) and non-200 responses with empty
+  body are both handled and produce readable error messages
 - test: add `unsubscribe/1` idempotency tests — unsubscribing a PID that was never
   subscribed, and calling unsubscribe twice after one subscribe, both return `:ok`
   without error (verified against `Denox.Run.Base.__handle_call__/4` logic)
