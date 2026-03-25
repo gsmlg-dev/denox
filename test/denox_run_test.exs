@@ -1453,6 +1453,14 @@ defmodule DenoxRunTest do
 
       assert lines == []
     end
+
+    test "raises RuntimeError when start_link fails (neither :file nor :package given)" do
+      # start_link([]) returns {:error, :normal} → stream accumulates {:failed, reason}
+      # → raises RuntimeError when enumerated (documented behavior in @doc warning)
+      assert_raise RuntimeError, ~r/failed to start/, fn ->
+        Denox.Run.stream([]) |> Enum.to_list()
+      end
+    end
   end
 
   describe "stream_from/2" do

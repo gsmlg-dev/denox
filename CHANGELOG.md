@@ -2,6 +2,9 @@
 
 ### Changes (since previous release)
 
+- test: add `stream/1` RuntimeError test — verifies that when `start_link` fails
+  (e.g., neither `:file` nor `:package` provided), the stream raises `RuntimeError`
+  when enumerated, as documented in the `@doc` warning block
 - fix(test): replace flaky `Application.stop(:inets)` test in coverage_gaps_test.exs
   with a safe synchronous test — the dangerous global state mutation was intermittently
   causing TLS errors in concurrently running async test modules
