@@ -239,6 +239,73 @@ defmodule Denox.Run.Base do
         end
       end
 
+      @doc """
+      Stream stdout lines from a script as a lazy `Stream`.
+
+      Starts a managed runtime and returns an `Enumerable` that yields
+      stdout lines one at a time. The runtime is automatically stopped
+      when the stream is fully consumed or halted (e.g. via `Stream.take/2`
+      or `Enum.take/2`).
+
+      This is useful for processing large outputs without buffering all
+      lines in memory, or for early termination once a condition is met.
+
+      ## Options
+
+      Same as `start_link/1`, plus:
+
+        - `:timeout` - per-line receive timeout in milliseconds (default: `30_000`).
+          If no new line arrives within this window, the stream halts.
+
+      ## Example
+
+          # Collect the first 5 lines of a long-running script
+          Denox.Run.stream(file: "server.ts", permissions: :all)
+          |> Enum.take(5)
+
+          # Filter lines matching a pattern
+          Denox.Run.stream(file: "generate.ts", permissions: :all)
+          |> Stream.filter(&String.contains?(&1, "ERROR"))
+          |> Enum.to_list()
+
+      > #### Errors on start {: .warning}
+      >
+      > If the runtime fails to start, the stream raises a `RuntimeError`
+      > when enumerated. Use `capture/1` if you prefer an `{:error, reason}`
+      > tuple instead.
+
+      """
+      @spec stream(keyword()) :: Enumerable.t()
+      def stream(opts) do
+        timeout = Keyword.get(opts, :timeout, 30_000)
+        start_opts = Keyword.delete(opts, :timeout)
+
+        Stream.resource(
+          fn ->
+            case start_link(start_opts) do
+              {:ok, pid} -> {:running, pid}
+              {:error, reason} -> {:failed, reason}
+            end
+          end,
+          fn
+            {:failed, reason} ->
+              raise RuntimeError,
+                message: "Denox.Run failed to start: #{inspect(reason)}"
+
+            {:running, pid} = state ->
+              case recv(pid, timeout: timeout) do
+                {:ok, line} -> {[line], state}
+                {:error, :closed} -> {:halt, state}
+                {:error, :timeout} -> {:halt, state}
+              end
+          end,
+          fn
+            {:failed, _} -> :ok
+            {:running, pid} -> stop(pid)
+          end
+        )
+      end
+
       # --- GenServer callbacks ---
 
       @impl true

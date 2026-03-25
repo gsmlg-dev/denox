@@ -25,6 +25,10 @@
   long lines, rapid output), Web Streams API, `Blob`, `MessageChannel`, Promise
   combinators, `setTimeout`/`setInterval`, granular permissions enforcement.
 - PRD checklist fully verified (29/29 items passing).
+- `capture/1` convenience function added to `Denox.Run.Base` (and inherited by both
+  `Denox.Run` and `Denox.CLI.Run`): starts a runtime, collects all stdout lines until
+  exit or timeout, and returns them as `{:ok, [String.t()]}`. Uses the recv-poll pattern
+  to avoid subscribe race conditions on fast-completing scripts.
 
 ## v0.5.0 — 2026-03-22
 

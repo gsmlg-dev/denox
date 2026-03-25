@@ -1284,4 +1284,66 @@ defmodule DenoxRunTest do
       assert lines == ["2", "4", "6"]
     end
   end
+
+  describe "stream/1" do
+    test "streams all stdout lines from a short-lived script", %{tmp_dir: dir} do
+      script =
+        write_script(dir, "stream_lines.ts", """
+        console.log("a");
+        console.log("b");
+        console.log("c");
+        """)
+
+      lines = Denox.Run.stream(file: script, permissions: :all) |> Enum.to_list()
+      assert lines == ["a", "b", "c"]
+    end
+
+    test "returns empty list for script with no output", %{tmp_dir: dir} do
+      script = write_script(dir, "silent_stream.ts", "// no output")
+
+      lines = Denox.Run.stream(file: script, permissions: :all) |> Enum.to_list()
+      assert lines == []
+    end
+
+    test "early termination via Enum.take stops the runtime", %{tmp_dir: dir} do
+      script =
+        write_script(dir, "infinite_stream.ts", """
+        let i = 0;
+        while (true) {
+          console.log(i++);
+          await new Promise(r => setTimeout(r, 10));
+        }
+        """)
+
+      lines = Denox.Run.stream(file: script, permissions: :all) |> Enum.take(3)
+      assert length(lines) == 3
+      assert Enum.all?(lines, &is_binary/1)
+    end
+
+    test "stream can be filtered", %{tmp_dir: dir} do
+      script =
+        write_script(dir, "filter_stream.ts", """
+        console.log("keep: hello");
+        console.log("drop: world");
+        console.log("keep: deno");
+        """)
+
+      lines =
+        Denox.Run.stream(file: script, permissions: :all)
+        |> Stream.filter(&String.starts_with?(&1, "keep:"))
+        |> Enum.to_list()
+
+      assert lines == ["keep: hello", "keep: deno"]
+    end
+
+    test "returns empty stream for nonexistent file (runtime exits immediately)" do
+      # A nonexistent file causes the NIF to start but the module fails to load.
+      # The runtime exits immediately, so the stream yields no lines.
+      lines =
+        Denox.Run.stream(file: "/nonexistent/stream_test.ts", permissions: :all)
+        |> Enum.to_list()
+
+      assert lines == []
+    end
+  end
 end
