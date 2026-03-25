@@ -111,11 +111,13 @@ defmodule Denox.CLI do
   # --- Internal (public for testability, not part of public API) ---
 
   @doc false
+  @spec cache_path(String.t()) :: String.t()
   def cache_path(version) do
     Path.join(["_build", "denox_cli-#{version}", "deno"])
   end
 
   @doc false
+  @spec detect_target() :: {:ok, {atom(), atom()}} | {:error, String.t()}
   def detect_target do
     with {:ok, os} <- detect_os(),
          {:ok, arch} <- detect_arch() do
@@ -124,6 +126,7 @@ defmodule Denox.CLI do
   end
 
   @doc false
+  @spec detect_os() :: {:ok, :macos | :linux} | {:error, String.t()}
   def detect_os do
     case :os.type() do
       {:unix, :darwin} -> {:ok, :macos}
@@ -133,6 +136,7 @@ defmodule Denox.CLI do
   end
 
   @doc false
+  @spec detect_arch() :: {:ok, :x86_64 | :aarch64} | {:error, String.t()}
   def detect_arch do
     arch =
       :erlang.system_info(:system_architecture)
@@ -146,6 +150,7 @@ defmodule Denox.CLI do
   end
 
   @doc false
+  @spec download_url(String.t(), {atom(), atom()}) :: String.t()
   def download_url(version, {os, arch}) do
     target =
       case {os, arch} do
@@ -159,9 +164,11 @@ defmodule Denox.CLI do
   end
 
   @doc false
+  @spec download(String.t()) :: {:ok, binary()} | {:error, term()}
   def download(url), do: download(url, 5)
 
   @doc false
+  @spec download(String.t(), non_neg_integer()) :: {:ok, binary()} | {:error, term()}
   def download(_url, 0), do: {:error, "Too many redirects"}
 
   def download(url, redirects_left) do
@@ -196,6 +203,7 @@ defmodule Denox.CLI do
   end
 
   @doc false
+  @spec handle_response(term(), non_neg_integer()) :: {:ok, binary()} | {:error, term()}
   def handle_response({:ok, {{_, status, _}, headers, _}}, redirects_left)
       when status in [301, 302, 303, 307, 308] do
     case Enum.find(headers, fn {k, _} -> String.downcase(to_string(k)) == "location" end) do
@@ -215,6 +223,7 @@ defmodule Denox.CLI do
   end
 
   @doc false
+  @spec target_name({atom(), atom()}) :: String.t()
   def target_name({os, arch}) do
     os_name =
       case os do
@@ -226,6 +235,7 @@ defmodule Denox.CLI do
   end
 
   @doc false
+  @spec extract_and_install(binary(), String.t()) :: :ok | {:error, term()}
   def extract_and_install(zip_data, dest) do
     dest_dir = Path.dirname(dest)
 
@@ -241,6 +251,7 @@ defmodule Denox.CLI do
   end
 
   @doc false
+  @spec safe_unzip(binary()) :: {:ok, list()} | {:error, term()}
   def safe_unzip(zip_data) do
     case :zip.unzip(zip_data, [:memory]) do
       {:ok, files} -> {:ok, files}
@@ -249,6 +260,7 @@ defmodule Denox.CLI do
   end
 
   @doc false
+  @spec find_deno_in_zip(list()) :: {:ok, binary()} | {:error, :deno_not_found_in_zip}
   def find_deno_in_zip(files) do
     case List.keyfind(files, ~c"deno", 0) do
       {_name, binary} -> {:ok, binary}
