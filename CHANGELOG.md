@@ -2,6 +2,9 @@
 
 ### Changes (since previous release)
 
+- fix(test): replace flaky `Application.stop(:inets)` test in coverage_gaps_test.exs
+  with a safe synchronous test — the dangerous global state mutation was intermittently
+  causing TLS errors in concurrently running async test modules
 - test: add `Denox.CLI.find_deno/0` system PATH success test — verifies system deno
   binary is found and returned as `{:ok, path}` when present on PATH, taking priority
   over the bundled CLI (exercises the first branch of the 3-step fallback chain)

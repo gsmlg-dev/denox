@@ -44,20 +44,11 @@ defmodule CoverageGapsTest do
   end
 
   describe "Denox.CLI.download/2 error paths" do
-    test "catches :exit when httpc manager is unavailable" do
-      # Stop inets so httpc is unavailable, then call download directly
-      # but download restarts inets internally — so we stop it via
-      # killing the httpc_manager between ensure_all_started and request
-      Application.stop(:inets)
-
-      on_exit(fn -> Application.ensure_all_started(:inets) end)
-
-      # Even though download restarts :inets, the :httpc_manager may not
-      # be ready for the request. This exercises the error handling.
-      result = Denox.CLI.download("https://example.com/test.zip", 1)
-
-      # Should return some form of result (error or success depending on timing)
-      assert match?({:error, _}, result) or match?({:ok, _}, result)
+    test "returns error when redirects_left is zero" do
+      # Safe synchronous test — no network call, no global state mutation.
+      # The :exit catch path is tested via handle_response/2 in denox_cli_internals_test.exs.
+      assert {:error, "Too many redirects"} =
+               Denox.CLI.download("https://example.com/test.zip", 0)
     end
   end
 
