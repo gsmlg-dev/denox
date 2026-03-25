@@ -1,6 +1,6 @@
-## v0.6.0
+## v0.6.0 (latest)
 
-### Changes
+### Changes (since previous release)
 
 - fix: tag deno-dependent tests with `:deno` to skip in CI
 - fix(ci): set `MIX_ENV=test` for E2E workflow
@@ -10,6 +10,23 @@
 
 - chore: add `@spec` annotations to callback implementations in `Denox.Run`,
   `Denox.CLI.Run`, and `Denox.CallbackHandler`
+- chore: add `@spec` to injected GenServer callbacks (`init/1`, `handle_call/3`,
+  `dispatch_line/2`, `handle_exit/2`) in `Denox.Run.Base`
+- chore: add `@spec` to private helpers in `Denox.Pool` and `Denox.CLI.Run`
+- feat: validate unknown granular permission keys in `Denox.runtime/1` and
+  `Denox.Run.start_link/1` — raises `ArgumentError` instead of silently ignoring
+- feat: move permission validation before CLI lookup in `Denox.CLI.Run.init_backend/1`
+  so callers get `ArgumentError` before any binary search
+- test: add `deny_*` permission tests for both `Denox.Run` (NIF) and `Denox.CLI.Run`
+  (subprocess) backends
+- test: add Pool error-path tests for `eval_file`, `eval_file_decode`, `eval_module`,
+  `exec`, `exec_ts`, and `call`/`call_async` with undefined functions
+- test: add `with_runtime/2` error-passthrough test (user function returning `{:error, ...}`)
+- docs: document `deny_*` keys and `ArgumentError` in `Denox.runtime/1` `:permissions` option
+- docs: expand `Denox.Pool` moduledoc with `load_npm` and `exec` usage patterns
+- docs: clarify `exec/2` and `exec_ts/2`: errors must still be handled (not fire-and-forget)
+- docs: document `with_runtime/2` error-passthrough semantics
+- docs: clarify `Denox.CLI.Run` primary use case is npm/jsr packages
 
 ### Improvements
 
