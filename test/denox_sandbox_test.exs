@@ -100,6 +100,12 @@ defmodule DenoxSandboxTest do
 
       assert {:ok, "3"} = Denox.eval(rt, "1 + 2")
     end
+
+    test "unknown permission key raises ArgumentError" do
+      assert_raise ArgumentError, ~r/unknown permission key/, fn ->
+        Denox.runtime(permissions: [bogus_perm: true])
+      end
+    end
   end
 
   describe "sandbox deprecation warning" do
