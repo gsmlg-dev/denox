@@ -2,6 +2,13 @@
 
 ### Changes (since previous release)
 
+- fix: `Denox.Deps.add_to_config/3` and `remove_from_config/2` now return
+  `{:error, "Failed to write ..."}` (human-readable string) instead of
+  `{:error, :eacces}` (raw posix atom) when the config file is not writable
+- test: add `Denox.Deps.add/3` write failure test — verifies that readonly config
+  files produce a readable error string, not a raw posix error atom
+- test: add `Denox.Deps.runtime/1` empty import_map branch coverage — exercises
+  the `map_size == 0` conditional skip in the runtime builder
 - test: add `CallbackHandler` non-JSON-serializable return value test — verifies that
   when a callback function returns a value that cannot be JSON-encoded (e.g., a PID),
   the `rescue` clause catches the `JSON.EncodeError` and sends it to JS as an error

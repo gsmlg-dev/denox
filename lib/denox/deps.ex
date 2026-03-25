@@ -243,7 +243,7 @@ defmodule Denox.Deps do
          {:ok, json} <- Denox.JSON.decode(content) do
       imports = Map.get(json, "imports", %{})
       updated = Map.put(json, "imports", Map.put(imports, name, specifier))
-      File.write(config, Denox.JSON.encode_pretty!(updated))
+      write_config(config, updated)
     else
       _ -> {:error, "Failed to update #{config}"}
     end
@@ -254,9 +254,16 @@ defmodule Denox.Deps do
          {:ok, json} <- Denox.JSON.decode(content) do
       imports = Map.get(json, "imports", %{})
       updated = Map.put(json, "imports", Map.delete(imports, name))
-      File.write(config, Denox.JSON.encode_pretty!(updated))
+      write_config(config, updated)
     else
       _ -> {:error, "Failed to update #{config}"}
+    end
+  end
+
+  defp write_config(config, data) do
+    case File.write(config, Denox.JSON.encode_pretty!(data)) do
+      :ok -> :ok
+      {:error, reason} -> {:error, "Failed to write #{config}: #{reason}"}
     end
   end
 end

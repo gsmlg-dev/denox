@@ -97,6 +97,13 @@ defmodule DenoxDepsUnitTest do
       File.mkdir_p!(Path.join(dir, "node_modules"))
       assert {:ok, _rt} = Denox.Deps.runtime(config: config, import_map: %{"foo" => "bar"})
     end
+
+    test "skips import_map when empty map provided", %{tmp_dir: dir} do
+      config = Path.join(dir, "deno.json")
+      write_json(config, %{"imports" => %{}})
+      File.mkdir_p!(Path.join(dir, "node_modules"))
+      assert {:ok, _rt} = Denox.Deps.runtime(config: config, import_map: %{})
+    end
   end
 
   describe "add/3 — success path" do
@@ -141,6 +148,25 @@ defmodule DenoxDepsUnitTest do
                Denox.Deps.add("zod", "npm:zod@^3.22", config: "/nonexistent_deps_dir/deno.json")
 
       assert is_binary(msg)
+    end
+  end
+
+  describe "add/3 — write failure" do
+    @describetag :deno
+    test "returns error tuple when config file is readonly after JSON parse", %{tmp_dir: dir} do
+      config = Path.join(dir, "deno.json")
+      write_json(config, %{"imports" => %{}})
+      File.chmod!(config, 0o444)
+
+      on_exit(fn -> File.chmod(config, 0o644) end)
+
+      if System.find_executable("deno") do
+        result = Denox.Deps.add("zod", "npm:zod@^3.22", config: config)
+        assert {:error, msg} = result
+        assert is_binary(msg)
+      end
+
+      File.chmod!(config, 0o644)
     end
   end
 
