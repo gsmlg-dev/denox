@@ -45,6 +45,27 @@ defmodule Denox.PermissionsTest do
       end
     end
 
+    test "raises on unknown permission key even with false value" do
+      assert_raise ArgumentError, ~r/unknown permission key/, fn ->
+        Denox.Permissions.to_nif_json(allow_banana: false)
+      end
+    end
+
+    test "mixed allow and deny flags for same category" do
+      json = Denox.Permissions.to_nif_json(allow_net: true, deny_net: ["evil.com"])
+      decoded = Denox.JSON.decode!(json)
+      assert decoded["mode"] == "granular"
+      assert decoded["allow_net"] == true
+      assert decoded["deny_net"] == ["evil.com"]
+    end
+
+    test "empty list is preserved (not filtered)" do
+      json = Denox.Permissions.to_nif_json(allow_read: [])
+      decoded = Denox.JSON.decode!(json)
+      assert decoded["mode"] == "granular"
+      assert decoded["allow_read"] == []
+    end
+
     test "all valid keys are accepted" do
       valid_keys = ~w(
         allow_read allow_write allow_net allow_env allow_run allow_ffi allow_sys

@@ -24,7 +24,7 @@ defmodule Denox.Permissions do
         {key, values}, acc when key in @valid_keys and is_list(values) ->
           Map.put(acc, Atom.to_string(key), values)
 
-        {_key, false}, acc ->
+        {key, false}, acc when key in @valid_keys ->
           acc
 
         {key, _value}, _acc ->
