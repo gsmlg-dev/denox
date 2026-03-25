@@ -168,6 +168,41 @@ defmodule Denox.Run.Base do
       end
 
       @doc """
+      Execute a function with a managed runtime, ensuring cleanup on exit.
+
+      Starts a runtime with `opts`, calls `fun` with the server PID, then
+      stops the runtime — even if `fun` raises an exception.
+
+      Returns the value returned by `fun`, or `{:error, reason}` if the
+      runtime failed to start.
+
+      ## Example
+
+          Denox.Run.with_runtime([file: "scripts/tool.ts", permissions: :all], fn pid ->
+            :ok = Denox.Run.send(pid, Jason.encode!(%{method: "init"}))
+            {:ok, line} = Denox.Run.recv(pid, timeout: 10_000)
+            Jason.decode!(line)
+          end)
+
+      """
+      @spec with_runtime(keyword(), (GenServer.server() -> result)) ::
+              result | {:error, term()}
+            when result: term()
+      def with_runtime(opts, fun) when is_list(opts) and is_function(fun, 1) do
+        case start_link(opts) do
+          {:ok, pid} ->
+            try do
+              fun.(pid)
+            after
+              stop(pid)
+            end
+
+          {:error, reason} ->
+            {:error, reason}
+        end
+      end
+
+      @doc """
       Subscribe the calling process to stdout messages.
 
       After subscribing, the calling process will receive:
@@ -343,27 +378,29 @@ defmodule Denox.Run.Base do
         file = Keyword.get(opts, :file)
 
         if is_nil(package) and is_nil(file) do
-          raise ArgumentError, "either :package or :file must be provided"
-        end
+          # Return :normal so exit(:normal) is called, which does not
+          # propagate to linked processes as an abnormal exit signal.
+          {:stop, :normal}
+        else
+          case init_backend(opts) do
+            {:ok, backend_state} ->
+              state = %__MODULE__{
+                backend_state: backend_state,
+                package: package,
+                file: file
+              }
 
-        case init_backend(opts) do
-          {:ok, backend_state} ->
-            state = %__MODULE__{
-              backend_state: backend_state,
-              package: package,
-              file: file
-            }
+              :telemetry.execute(
+                [:denox, :run, :start],
+                %{system_time: System.system_time()},
+                %{package: package, file: file, backend: @backend_type}
+              )
 
-            :telemetry.execute(
-              [:denox, :run, :start],
-              %{system_time: System.system_time()},
-              %{package: package, file: file, backend: @backend_type}
-            )
+              {:ok, state}
 
-            {:ok, state}
-
-          {:error, reason} ->
-            {:stop, reason}
+            {:error, reason} ->
+              {:stop, reason}
+          end
         end
       end
 

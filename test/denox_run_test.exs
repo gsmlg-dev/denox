@@ -25,12 +25,7 @@ defmodule DenoxRunTest do
     end
 
     test "requires package or file" do
-      Process.flag(:trap_exit, true)
-
-      assert {:error, {%ArgumentError{message: msg}, _}} =
-               Denox.Run.start_link([])
-
-      assert msg =~ "either :package or :file"
+      assert {:error, :normal} = Denox.Run.start_link([])
     end
 
     test "runs with granular permissions", %{tmp_dir: dir} do
@@ -1388,6 +1383,59 @@ defmodule DenoxRunTest do
       assert {:error, :timeout} = Denox.Run.send_and_recv(pid, "request", timeout: 200)
 
       Denox.Run.stop(pid)
+    end
+  end
+
+  describe "with_runtime/2" do
+    @tag :deno
+    test "returns the value from the function", %{tmp_dir: dir} do
+      script =
+        write_script(dir, "echo_once.ts", """
+        const line = await new Promise<string>((resolve) => {
+          const decoder = new TextDecoder();
+          Deno.stdin.readable.getReader().read().then(({ value }) => resolve(decoder.decode(value).trim()));
+        });
+        console.log(line);
+        """)
+
+      result =
+        Denox.Run.with_runtime([file: script, permissions: :all], fn pid ->
+          :ok = Denox.Run.send(pid, "hello_with_runtime")
+          {:ok, line} = Denox.Run.recv(pid, timeout: 5000)
+          line
+        end)
+
+      assert result == "hello_with_runtime"
+    end
+
+    @tag :deno
+    test "stops the runtime even when the function raises", %{tmp_dir: dir} do
+      script = write_script(dir, "noop_server.ts", "await new Promise(() => {});")
+
+      outer_pid = self()
+
+      assert_raise RuntimeError, "boom", fn ->
+        Denox.Run.with_runtime([file: script, permissions: :all], fn pid ->
+          Kernel.send(outer_pid, {:captured_pid, pid})
+          raise RuntimeError, "boom"
+        end)
+      end
+
+      assert_receive {:captured_pid, server_pid}
+      # Give the stop call time to process
+      Process.sleep(50)
+      refute Process.alive?(server_pid)
+    end
+
+    test "returns {:error, reason} when runtime fails to start" do
+      # Omitting both :file and :package causes init/1 to raise before the
+      # backend starts, so start_link returns {:error, _}.
+      result =
+        Denox.Run.with_runtime([], fn _pid ->
+          :should_not_reach
+        end)
+
+      assert {:error, _reason} = result
     end
   end
 end
