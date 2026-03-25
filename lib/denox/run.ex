@@ -213,6 +213,7 @@ defmodule Denox.Run do
 
   # --- Private ---
 
+  @spec receiver_loop(Denox.runtime(), pid(), reference()) :: :ok
   defp receiver_loop(resource, gen_server_pid, ref) do
     case Denox.Native.runtime_run_recv(resource) do
       {:ok, nil} ->
@@ -232,6 +233,7 @@ defmodule Denox.Run do
     end
   end
 
+  @spec build_permissions_json(:all | :none | nil | keyword()) :: String.t()
   defp build_permissions_json(:all), do: Denox.JSON.encode!(%{"mode" => "allow_all"})
   # nil and :none both map to deny_all for backward compatibility
   defp build_permissions_json(nil), do: Denox.JSON.encode!(%{"mode" => "deny_all"})

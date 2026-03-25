@@ -431,6 +431,7 @@ defmodule Denox.Run.Base do
 
       # --- GenServer callbacks ---
 
+      @spec init(keyword()) :: {:ok, t()} | {:stop, term()}
       @impl true
       def init(opts) do
         package = Keyword.get(opts, :package)
@@ -463,6 +464,8 @@ defmodule Denox.Run.Base do
         end
       end
 
+      @spec handle_call(term(), GenServer.from(), t()) ::
+              {:reply, term(), t()} | {:noreply, t()}
       @impl true
       def handle_call(msg, from, state) do
         Denox.Run.Base.__handle_call__(__MODULE__, msg, from, state)

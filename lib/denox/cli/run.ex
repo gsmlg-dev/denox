@@ -148,6 +148,7 @@ defmodule Denox.CLI.Run do
 
   # --- Private ---
 
+  @spec find_deno() :: {:ok, String.t()} | {:error, String.t()}
   defp find_deno do
     case Denox.CLI.bin_path() do
       {:ok, path} ->
@@ -159,6 +160,7 @@ defmodule Denox.CLI.Run do
     end
   end
 
+  @spec build_args(keyword()) :: [String.t()]
   defp build_args(opts) do
     package = Keyword.get(opts, :package)
     file = Keyword.get(opts, :file)
@@ -182,6 +184,7 @@ defmodule Denox.CLI.Run do
     deny_ffi deny_sys deny_hrtime
   )a
 
+  @spec permissions_to_args(:all | :none | nil | keyword()) :: [String.t()]
   defp permissions_to_args(:all), do: ["-A"]
   # nil and :none both mean "no explicit allow flags" (Deno denies by default in v2)
   defp permissions_to_args(nil), do: []
@@ -209,6 +212,7 @@ defmodule Denox.CLI.Run do
     "--" <> (key |> Atom.to_string() |> String.replace("_", "-"))
   end
 
+  @spec build_env(keyword()) :: [{charlist(), charlist()}]
   defp build_env(opts) do
     opts
     |> Keyword.get(:env, %{})
