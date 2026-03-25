@@ -420,10 +420,7 @@ defmodule Denox.Pool do
          do: Denox.JSON.decode(json)
   end
 
-  @spec ts_extension?(String.t()) :: boolean()
-  defp ts_extension?(path) do
-    Path.extname(path) in [".ts", ".tsx", ".mts", ".cts"]
-  end
+  defp ts_extension?(path), do: Denox.ts_extension?(path)
 
   @spec next_runtime(map()) :: {Denox.runtime(), map()}
   defp next_runtime(state) do

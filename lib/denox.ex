@@ -437,8 +437,9 @@ defmodule Denox do
     end
   end
 
-  defp ts_extension?(path) do
-    ext = Path.extname(path)
-    ext in [".ts", ".tsx", ".mts", ".cts"]
+  @doc false
+  @spec ts_extension?(String.t()) :: boolean()
+  def ts_extension?(path) do
+    Path.extname(path) in [".ts", ".tsx", ".mts", ".cts"]
   end
 end
