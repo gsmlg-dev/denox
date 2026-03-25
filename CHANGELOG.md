@@ -36,6 +36,19 @@
 - docs: document `with_runtime/2` error-passthrough semantics
 - docs: clarify `Denox.CLI.Run` primary use case is npm/jsr packages
 
+- fix: `Denox.Pool.init/1` now returns `{:stop, {:failed_to_create_runtime, msg}}`
+  instead of raising when runtime creation fails — enables proper supervision tree
+  error propagation
+- fix: `Denox.Run.Base` `subscribe/1` now deduplicates by PID — calling subscribe
+  twice from the same process no longer creates duplicate monitor refs or sends
+  duplicate stdout messages
+- fix: `Denox.Permissions.to_nif_json/1` now raises `ArgumentError` on unknown
+  permission keys even when the value is `false` (previously silently ignored)
+- test: add duplicate subscribe idempotency test
+- test: add Pool init failure propagation test
+- test: add CLI.Run invalid env type validation test
+- test: add permission edge case tests (mixed allow/deny, empty lists, false unknown keys)
+
 ### Improvements
 
 - `Denox.Run` stdin/stdout now uses native OS pipe bridging via `deno_io::Stdio`/`StdioPipe`
