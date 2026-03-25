@@ -35,6 +35,10 @@
 - `send_and_recv/3` convenience function added to `Denox.Run.Base`: one-shot
   request/response helper for JSON-RPC over stdio (e.g. MCP servers). Sends a line
   and returns the next line, wrapping `send/2` + `recv/2` in a single call.
+- `with_runtime/2` bracket-style resource management added to `Denox.Run.Base`:
+  starts a runtime, passes the PID to a user function, and guarantees cleanup via
+  an `after` block — even if the function raises. Returns `{:error, reason}` if
+  the runtime fails to start.
 
 ## v0.5.0 — 2026-03-22
 
