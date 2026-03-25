@@ -1,13 +1,13 @@
 mod callback_op;
-mod ts_loader;
+pub(crate) mod runtime_run;
+pub(crate) mod ts_loader;
 
-use callback_op::{CallbackRequest, CallbackState, install_callback_global};
+use callback_op::{install_callback_global, CallbackRequest, CallbackState};
 use deno_core::JsRuntime;
 use deno_core::RuntimeOptions;
 use deno_permissions::{Permissions, PermissionsContainer};
 use deno_runtime::permissions::RuntimePermissionDescriptorParser;
 use deno_runtime::worker::{MainWorker, WorkerOptions, WorkerServiceOptions};
-use deno_runtime::BootstrapOptions;
 use rustler::{Binary, Encoder, Env, LocalPid, OwnedBinary, ResourceArc, Term};
 use serde::Deserialize;
 use std::collections::HashMap;
@@ -119,12 +119,10 @@ fn perm_value_to_vec(v: &Option<PermValue>) -> Option<Vec<String>> {
     }
 }
 
-fn build_permissions(config: Option<&str>) -> Result<Permissions, String> {
+pub(crate) fn build_permissions(config: Option<&str>) -> Result<Permissions, String> {
     let config = match config {
-        Some(json) if !json.is_empty() => {
-            serde_json::from_str::<PermissionsConfig>(json)
-                .map_err(|e| format!("Invalid permissions JSON: {}", e))?
-        }
+        Some(json) if !json.is_empty() => serde_json::from_str::<PermissionsConfig>(json)
+            .map_err(|e| format!("Invalid permissions JSON: {}", e))?,
         _ => PermissionsConfig::AllowAll,
     };
 
@@ -133,14 +131,22 @@ fn build_permissions(config: Option<&str>) -> Result<Permissions, String> {
             log::warn!("Denox runtime created with allow-all permissions. Use granular permissions in production.");
             Ok(Permissions::allow_all())
         }
-        PermissionsConfig::DenyAll => {
-            Ok(Permissions::none_without_prompt())
-        }
+        PermissionsConfig::DenyAll => Ok(Permissions::none_without_prompt()),
         PermissionsConfig::Granular {
-            allow_read, allow_write, allow_net, allow_env,
-            allow_run, allow_ffi, allow_sys,
-            deny_read, deny_write, deny_net, deny_env,
-            deny_run, deny_ffi, deny_sys,
+            allow_read,
+            allow_write,
+            allow_net,
+            allow_env,
+            allow_run,
+            allow_ffi,
+            allow_sys,
+            deny_read,
+            deny_write,
+            deny_net,
+            deny_env,
+            deny_run,
+            deny_ffi,
+            deny_sys,
         } => {
             let opts = deno_permissions::PermissionsOptions {
                 allow_all: false,
@@ -440,25 +446,19 @@ fn runtime_new(
             .unwrap_or_else(|_| deno_core::url::Url::parse("file:///").unwrap());
 
         let mut worker = tokio_rt.block_on(async {
-            let module_loader = std::rc::Rc::new(ts_loader::TsModuleLoader::new(
-                loader_cache_dir,
-                import_map,
-            ));
+            let module_loader =
+                std::rc::Rc::new(ts_loader::TsModuleLoader::new(loader_cache_dir, import_map));
 
             let create_web_worker_cb =
                 std::sync::Arc::new(|_| panic!("Web workers are not supported in Denox"));
 
             let fs: deno_fs::FileSystemRc = std::sync::Arc::new(deno_fs::RealFs);
-            let permission_desc_parser = std::sync::Arc::new(
-                RuntimePermissionDescriptorParser::new(fs.clone()),
-            );
+            let permission_desc_parser =
+                std::sync::Arc::new(RuntimePermissionDescriptorParser::new(fs.clone()));
 
             let services = WorkerServiceOptions {
                 module_loader,
-                permissions: PermissionsContainer::new(
-                    permission_desc_parser,
-                    permissions,
-                ),
+                permissions: PermissionsContainer::new(permission_desc_parser, permissions),
                 blob_store: Default::default(),
                 broadcast_channel: Default::default(),
                 feature_checker: Default::default(),
@@ -756,428 +756,9 @@ fn panic_message(panic_val: &Box<dyn std::any::Any + Send>) -> String {
     }
 }
 
-// ============================================================
-// Part 2: RuntimeRunResource — long-lived Deno runtime with I/O
-// ============================================================
-
-/// Default stdout buffer size (bounded channel capacity).
-const DEFAULT_BUFFER_SIZE: usize = 1024;
-
-struct RuntimeRunResource {
-    stdin_tx: mpsc::Sender<String>,
-    stdout_rx: Mutex<mpsc::Receiver<String>>,
-    stop_tx: Mutex<Option<mpsc::Sender<()>>>,
-    alive: std::sync::Arc<std::sync::atomic::AtomicBool>,
-}
-
-unsafe impl Send for RuntimeRunResource {}
-unsafe impl Sync for RuntimeRunResource {}
-
-impl rustler::Resource for RuntimeRunResource {}
-
-/// Resolve a module specifier: npm: prefixed for scoped packages, passthrough otherwise.
-fn resolve_specifier(spec: &str) -> String {
-    if spec.starts_with("npm:")
-        || spec.starts_with("jsr:")
-        || spec.starts_with("http://")
-        || spec.starts_with("https://")
-        || spec.starts_with("file://")
-    {
-        spec.to_string()
-    } else if spec.starts_with('@') {
-        format!("npm:{}", spec)
-    } else {
-        spec.to_string()
-    }
-}
-
-/// Create a long-lived runtime that loads and runs a module.
-#[rustler::nif(schedule = "DirtyCpu")]
-fn runtime_run(
-    specifier: String,
-    permissions_json: String,
-    env_vars_json: String,
-    args_json: String,
-    buffer_size: usize,
-) -> Result<ResourceArc<RuntimeRunResource>, String> {
-    let env_vars: HashMap<String, String> = if env_vars_json.is_empty() {
-        HashMap::new()
-    } else {
-        serde_json::from_str(&env_vars_json)
-            .map_err(|e| format!("Invalid env vars JSON: {}", e))?
-    };
-    let args: Vec<String> = if args_json.is_empty() {
-        vec![]
-    } else {
-        serde_json::from_str(&args_json)
-            .map_err(|e| format!("Invalid args JSON: {}", e))?
-    };
-    let resolved = resolve_specifier(&specifier);
-
-    let permissions_str = if permissions_json.is_empty() {
-        None
-    } else {
-        Some(permissions_json.as_str())
-    };
-    let permissions = build_permissions(permissions_str)?;
-
-    let buf_size = if buffer_size == 0 {
-        DEFAULT_BUFFER_SIZE
-    } else {
-        buffer_size
-    };
-
-    let (stdin_tx, stdin_rx) = mpsc::channel::<String>();
-    let (stdout_tx, stdout_rx) = mpsc::sync_channel::<String>(buf_size);
-    let (stop_tx, stop_rx) = mpsc::channel::<()>();
-    let alive = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(true));
-    let alive_clone = alive.clone();
-
-    std::thread::spawn(move || {
-        let tokio_rt = tokio::runtime::Builder::new_current_thread()
-            .enable_all()
-            .build()
-            .expect("Failed to create tokio runtime");
-
-        let _guard = tokio_rt.enter();
-
-        // Set environment variables for this runtime
-        for (key, value) in env_vars.iter() {
-            std::env::set_var(key, value);
-        }
-
-        let main_module_url = if resolved.starts_with("npm:") || resolved.starts_with("jsr:") {
-            // For npm/jsr specifiers, use the current directory as base
-            let cwd = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("/"));
-            deno_core::url::Url::from_directory_path(&cwd)
-                .unwrap_or_else(|_| deno_core::url::Url::parse("file:///").unwrap())
-        } else if resolved.starts_with("http://") || resolved.starts_with("https://") {
-            deno_core::url::Url::parse(&resolved).unwrap()
-        } else {
-            // File path
-            let path = std::path::Path::new(&resolved)
-                .canonicalize()
-                .unwrap_or_else(|_| std::path::PathBuf::from(&resolved));
-            deno_core::url::Url::from_file_path(&path)
-                .unwrap_or_else(|_| deno_core::url::Url::parse("file:///").unwrap())
-        };
-
-        let mut worker = tokio_rt.block_on(async {
-            let module_loader =
-                std::rc::Rc::new(ts_loader::TsModuleLoader::new(None, HashMap::new()));
-
-            let create_web_worker_cb =
-                std::sync::Arc::new(|_| panic!("Web workers are not supported in Denox"));
-
-            let fs: deno_fs::FileSystemRc = std::sync::Arc::new(deno_fs::RealFs);
-            let permission_desc_parser =
-                std::sync::Arc::new(RuntimePermissionDescriptorParser::new(fs.clone()));
-
-            let services = WorkerServiceOptions {
-                module_loader,
-                permissions: PermissionsContainer::new(permission_desc_parser, permissions),
-                blob_store: Default::default(),
-                broadcast_channel: Default::default(),
-                feature_checker: Default::default(),
-                fs: fs.clone(),
-                node_services: None,
-                npm_process_state_provider: None,
-                root_cert_store_provider: None,
-                shared_array_buffer_store: None,
-                compiled_wasm_module_store: None,
-                v8_code_cache: None,
-            };
-
-            let mut bootstrap = BootstrapOptions::default();
-            bootstrap.args = args;
-
-            let options = WorkerOptions {
-                create_web_worker_cb,
-                bootstrap,
-                ..Default::default()
-            };
-
-            MainWorker::bootstrap_from_options(main_module_url.clone(), services, options)
-        });
-
-        // Install channel-based stdin/stdout bridge functions on globalThis.
-        // We keep raw pointers to the channel endpoints so V8 functions can
-        // access them. These MUST be reclaimed when the thread exits.
-        let stdin_rx_mutex = std::sync::Arc::new(Mutex::new(stdin_rx));
-        let stdin_rx_for_js = stdin_rx_mutex.clone();
-        let stdout_tx_clone = stdout_tx.clone();
-
-        let stdout_raw_ptr: *mut mpsc::SyncSender<String>;
-        {
-            let scope = &mut worker.js_runtime.handle_scope();
-            let stdin_ptr = std::sync::Arc::into_raw(stdin_rx_for_js) as *mut std::ffi::c_void;
-            let external = deno_core::v8::External::new(scope, stdin_ptr);
-
-            let readline_fn =
-                deno_core::v8::Function::builder(denox_readline_v8)
-                    .data(external.into())
-                    .build(scope)
-                    .expect("Failed to create readline function");
-
-            let global = scope.get_current_context().global(scope);
-            let key = deno_core::v8::String::new(scope, "__denox_readline").unwrap();
-            global.set(scope, key.into(), readline_fn.into());
-
-            stdout_raw_ptr = Box::into_raw(Box::new(stdout_tx_clone));
-            let stdout_external =
-                deno_core::v8::External::new(scope, stdout_raw_ptr as *mut std::ffi::c_void);
-
-            let writeline_fn =
-                deno_core::v8::Function::builder(denox_writeline_v8)
-                    .data(stdout_external.into())
-                    .build(scope)
-                    .expect("Failed to create writeline function");
-
-            let write_key = deno_core::v8::String::new(scope, "__denox_writeline").unwrap();
-            global.set(scope, write_key.into(), writeline_fn.into());
-        }
-
-        // Override console.log to send via channel, and bridge Deno.stdin
-        let io_setup = r#"
-            console.log = (...args) => {
-                const line = args.map(a => typeof a === 'string' ? a : JSON.stringify(a)).join(' ');
-                __denox_writeline(line);
-            };
-
-            // Bridge Deno.stdin.read to __denox_readline channel
-            {
-                const encoder = new TextEncoder();
-                let pendingBuf = new Uint8Array(0);
-
-                const stdinProxy = {
-                    rid: -1,
-                    read: async (buf) => {
-                        if (pendingBuf.length > 0) {
-                            const n = Math.min(buf.length, pendingBuf.length);
-                            buf.set(pendingBuf.subarray(0, n));
-                            pendingBuf = pendingBuf.subarray(n);
-                            return n;
-                        }
-                        while (true) {
-                            const line = __denox_readline();
-                            if (line !== null) {
-                                const data = encoder.encode(line + "\n");
-                                const n = Math.min(buf.length, data.length);
-                                buf.set(data.subarray(0, n));
-                                if (data.length > n) {
-                                    pendingBuf = data.subarray(n);
-                                }
-                                return n;
-                            }
-                            await new Promise(r => setTimeout(r, 10));
-                        }
-                    },
-                    get readable() {
-                        return new ReadableStream({
-                            async pull(controller) {
-                                const buf = new Uint8Array(4096);
-                                const n = await stdinProxy.read(buf);
-                                if (n === null) {
-                                    controller.close();
-                                } else {
-                                    controller.enqueue(buf.subarray(0, n));
-                                }
-                            }
-                        });
-                    },
-                    isTerminal() { return false; },
-                    close() {},
-                    setRaw() {},
-                };
-                Object.defineProperty(Deno, 'stdin', {
-                    value: stdinProxy,
-                    writable: false,
-                    configurable: true,
-                });
-            }
-        "#;
-        let _ = worker.js_runtime.execute_script("<denox_run_io>", io_setup);
-
-        // Load and run the main module
-        let specifier_url = if resolved.starts_with("npm:") || resolved.starts_with("jsr:") {
-            deno_core::url::Url::parse(&resolved).unwrap()
-        } else {
-            main_module_url.clone()
-        };
-
-        let load_result = tokio_rt.block_on(async {
-            worker.execute_main_module(&specifier_url).await
-        });
-
-        if let Err(e) = load_result {
-            let _ = stdout_tx.send(format!("Error loading module: {}", e));
-            alive_clone.store(false, std::sync::atomic::Ordering::SeqCst);
-            return;
-        }
-
-        // Run the event loop until completion or stop signal.
-        // Strategy: first try a quick run to handle simple scripts that
-        // complete immediately. If the event loop doesn't finish quickly,
-        // enter a long-running poll loop for servers/daemons.
-        let completed = tokio_rt.block_on(async {
-            tokio::time::timeout(
-                std::time::Duration::from_secs(1),
-                worker.run_event_loop(false),
-            )
-            .await
-        });
-
-        match completed {
-            Ok(Ok(())) => {
-                // Event loop completed — script finished naturally
-            }
-            Ok(Err(e)) => {
-                let _ = stdout_tx.send(format!("Event loop error: {}", e));
-            }
-            Err(_timeout) => {
-                // Long-running script (server, daemon, etc.)
-                // Keep running until stop signal or event loop completion.
-                tokio_rt.block_on(async {
-                    let event_loop = worker.run_event_loop(false);
-                    tokio::pin!(event_loop);
-
-                    loop {
-                        match stop_rx.try_recv() {
-                            Ok(()) | Err(mpsc::TryRecvError::Disconnected) => break,
-                            Err(mpsc::TryRecvError::Empty) => {}
-                        }
-
-                        tokio::select! {
-                            biased;
-                            result = &mut event_loop => {
-                                if let Err(e) = result {
-                                    let _ = stdout_tx.send(format!("Event loop error: {}", e));
-                                }
-                                break;
-                            }
-                            _ = tokio::time::sleep(std::time::Duration::from_millis(100)) => {
-                                continue;
-                            }
-                        }
-                    }
-                });
-            }
-        }
-
-        // Reclaim the leaked stdout sender clone so the channel fully closes.
-        // SAFETY: stdout_raw_ptr was created by Box::into_raw above and is
-        // only accessed by V8 functions that can no longer run at this point.
-        unsafe { drop(Box::from_raw(stdout_raw_ptr)); }
-
-        // Drop the primary stdout sender to close the channel.
-        drop(stdout_tx);
-        alive_clone.store(false, std::sync::atomic::Ordering::SeqCst);
-    });
-
-    Ok(ResourceArc::new(RuntimeRunResource {
-        stdin_tx,
-        stdout_rx: Mutex::new(stdout_rx),
-        stop_tx: Mutex::new(Some(stop_tx)),
-        alive,
-    }))
-}
-
-/// V8 function: __denox_readline() — reads a line from stdin channel
-fn denox_readline_v8(
-    scope: &mut deno_core::v8::HandleScope,
-    args: deno_core::v8::FunctionCallbackArguments,
-    mut retval: deno_core::v8::ReturnValue,
-) {
-    let data = args.data();
-    let external =
-        unsafe { deno_core::v8::Local::<deno_core::v8::External>::cast_unchecked(data) };
-    let rx_ptr = external.value() as *const Mutex<mpsc::Receiver<String>>;
-    // SAFETY: The Arc keeps the Mutex alive for the lifetime of the runtime
-    let rx_arc = unsafe {
-        std::sync::Arc::increment_strong_count(rx_ptr as *const Mutex<mpsc::Receiver<String>>);
-        std::sync::Arc::from_raw(rx_ptr)
-    };
-
-    let result = rx_arc.lock().unwrap().recv_timeout(std::time::Duration::from_millis(100));
-    match result {
-        Ok(line) => {
-            let v8_str = deno_core::v8::String::new(scope, &line).unwrap();
-            retval.set(v8_str.into());
-        }
-        Err(_) => {
-            retval.set(deno_core::v8::null(scope).into());
-        }
-    };
-}
-
-/// V8 function: __denox_writeline(line) — writes a line to stdout channel
-fn denox_writeline_v8(
-    scope: &mut deno_core::v8::HandleScope,
-    args: deno_core::v8::FunctionCallbackArguments,
-    _retval: deno_core::v8::ReturnValue,
-) {
-    let data = args.data();
-    let external =
-        unsafe { deno_core::v8::Local::<deno_core::v8::External>::cast_unchecked(data) };
-    let tx_ptr = external.value() as *mut mpsc::SyncSender<String>;
-    let tx = unsafe { &*tx_ptr };
-
-    if args.length() > 0 {
-        let val = args.get(0);
-        let line = val.to_rust_string_lossy(scope);
-        let _ = tx.send(line);
-    }
-}
-
-/// Send a line to the runtime's stdin channel.
-#[rustler::nif]
-fn runtime_run_send(resource: ResourceArc<RuntimeRunResource>, data: String) -> Result<(), String> {
-    resource
-        .stdin_tx
-        .send(data)
-        .map_err(|_| "Runtime has shut down".to_string())
-}
-
-/// Block until a line is available from stdout, or return None if closed.
-#[rustler::nif(schedule = "DirtyIo")]
-fn runtime_run_recv(
-    resource: ResourceArc<RuntimeRunResource>,
-) -> Result<Option<String>, String> {
-    let rx = resource.stdout_rx.lock().map_err(|_| "Lock poisoned".to_string())?;
-
-    match rx.recv_timeout(std::time::Duration::from_secs(1)) {
-        Ok(line) => Ok(Some(line)),
-        Err(mpsc::RecvTimeoutError::Timeout) => Ok(None),
-        Err(mpsc::RecvTimeoutError::Disconnected) => {
-            if resource.alive.load(std::sync::atomic::Ordering::SeqCst) {
-                Ok(None)
-            } else {
-                Ok(None) // Runtime has stopped
-            }
-        }
-    }
-}
-
-/// Signal the runtime to shut down.
-#[rustler::nif]
-fn runtime_run_stop(resource: ResourceArc<RuntimeRunResource>) -> Result<(), String> {
-    if let Ok(mut guard) = resource.stop_tx.lock() {
-        if let Some(tx) = guard.take() {
-            let _ = tx.send(());
-        }
-    }
-    Ok(())
-}
-
-/// Check if the runtime is still running.
-#[rustler::nif]
-fn runtime_run_alive(resource: ResourceArc<RuntimeRunResource>) -> bool {
-    resource.alive.load(std::sync::atomic::Ordering::SeqCst)
-}
-
 rustler::init!("Elixir.Denox.Native", load = on_load);
 
 fn on_load(env: Env, _info: Term) -> bool {
     let _ = env.register::<RuntimeResource>();
-    env.register::<RuntimeRunResource>().is_ok()
+    env.register::<runtime_run::RuntimeRunResource>().is_ok()
 }

@@ -116,8 +116,7 @@ impl TsModuleLoader {
         )?;
 
         let source_bytes = transpiled.into_source().source;
-        String::from_utf8(source_bytes)
-            .map_err(|e| anyhow::anyhow!("UTF-8 error: {}", e))
+        String::from_utf8(source_bytes).map_err(|e| anyhow::anyhow!("UTF-8 error: {}", e))
     }
 
     /// Compute a disk cache file path from a URL using a simple hash

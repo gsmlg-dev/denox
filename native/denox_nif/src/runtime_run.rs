@@ -1,0 +1,330 @@
+use crate::build_permissions;
+use crate::ts_loader;
+use deno_permissions::PermissionsContainer;
+use deno_runtime::permissions::RuntimePermissionDescriptorParser;
+use deno_runtime::worker::{MainWorker, WorkerOptions, WorkerServiceOptions};
+use deno_runtime::BootstrapOptions;
+use rustler::ResourceArc;
+use std::collections::HashMap;
+use std::sync::mpsc;
+use std::sync::Mutex;
+
+/// Default stdout buffer size (bounded channel capacity).
+const DEFAULT_BUFFER_SIZE: usize = 1024;
+
+pub struct RuntimeRunResource {
+    stdin_tx: mpsc::Sender<String>,
+    stdout_rx: Mutex<mpsc::Receiver<String>>,
+    stop_tx: Mutex<Option<mpsc::Sender<()>>>,
+    alive: std::sync::Arc<std::sync::atomic::AtomicBool>,
+}
+
+unsafe impl Send for RuntimeRunResource {}
+unsafe impl Sync for RuntimeRunResource {}
+
+impl rustler::Resource for RuntimeRunResource {}
+
+/// Resolve a module specifier: npm: prefixed for scoped packages, passthrough otherwise.
+pub fn resolve_specifier(spec: &str) -> String {
+    if spec.starts_with("npm:")
+        || spec.starts_with("jsr:")
+        || spec.starts_with("http://")
+        || spec.starts_with("https://")
+        || spec.starts_with("file://")
+    {
+        spec.to_string()
+    } else if spec.starts_with('@') {
+        format!("npm:{}", spec)
+    } else {
+        spec.to_string()
+    }
+}
+
+/// Create a long-lived runtime that loads and runs a module.
+#[rustler::nif(schedule = "DirtyCpu")]
+pub fn runtime_run(
+    specifier: String,
+    permissions_json: String,
+    env_vars_json: String,
+    args_json: String,
+    buffer_size: usize,
+) -> Result<ResourceArc<RuntimeRunResource>, String> {
+    let env_vars: HashMap<String, String> = if env_vars_json.is_empty() {
+        HashMap::new()
+    } else {
+        serde_json::from_str(&env_vars_json).map_err(|e| format!("Invalid env vars JSON: {}", e))?
+    };
+    let args: Vec<String> = if args_json.is_empty() {
+        vec![]
+    } else {
+        serde_json::from_str(&args_json).map_err(|e| format!("Invalid args JSON: {}", e))?
+    };
+    let resolved = resolve_specifier(&specifier);
+
+    let permissions_str = if permissions_json.is_empty() {
+        None
+    } else {
+        Some(permissions_json.as_str())
+    };
+    let permissions = build_permissions(permissions_str)?;
+
+    let buf_size = if buffer_size == 0 {
+        DEFAULT_BUFFER_SIZE
+    } else {
+        buffer_size
+    };
+
+    // Create OS pipe pairs for stdin/stdout bridging.
+    // Deno reads from stdin_deno_read, Elixir writes to stdin_deno_write.
+    // Deno writes to stdout_deno_write, Elixir reads from stdout_deno_read.
+    let (stdin_deno_read, stdin_deno_write) =
+        deno_io::pipe().map_err(|e| format!("Failed to create stdin pipe: {}", e))?;
+    let (stdout_deno_read, stdout_deno_write) =
+        deno_io::pipe().map_err(|e| format!("Failed to create stdout pipe: {}", e))?;
+
+    let (stdin_tx, stdin_rx) = mpsc::channel::<String>();
+    let (stdout_tx, stdout_rx) = mpsc::sync_channel::<String>(buf_size);
+    let (stop_tx, stop_rx) = mpsc::channel::<()>();
+    let alive = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(true));
+    let alive_clone = alive.clone();
+    let alive_writer = alive.clone();
+    let alive_reader = alive.clone();
+
+    // Bridge thread: stdin mpsc channel → stdin pipe (Elixir → Deno)
+    let mut stdin_pipe_writer = stdin_deno_write;
+    std::thread::spawn(move || {
+        use std::io::Write;
+        while alive_writer.load(std::sync::atomic::Ordering::SeqCst) {
+            match stdin_rx.recv_timeout(std::time::Duration::from_millis(100)) {
+                Ok(line) => {
+                    if stdin_pipe_writer.write_all(line.as_bytes()).is_err() {
+                        break;
+                    }
+                    if !line.ends_with('\n') {
+                        if stdin_pipe_writer.write_all(b"\n").is_err() {
+                            break;
+                        }
+                    }
+                    if stdin_pipe_writer.flush().is_err() {
+                        break;
+                    }
+                }
+                Err(mpsc::RecvTimeoutError::Timeout) => continue,
+                Err(mpsc::RecvTimeoutError::Disconnected) => break,
+            }
+        }
+    });
+
+    // Bridge thread: stdout pipe → stdout mpsc channel (Deno → Elixir)
+    let mut stdout_pipe_reader = stdout_deno_read;
+    std::thread::spawn(move || {
+        use std::io::{BufRead, BufReader};
+        let reader = BufReader::new(&mut stdout_pipe_reader);
+        for line_result in reader.lines() {
+            match line_result {
+                Ok(line) => {
+                    if stdout_tx.send(line).is_err() {
+                        break;
+                    }
+                }
+                Err(_) => break,
+            }
+        }
+        // Pipe closed — mark as not alive if the event loop thread hasn't already
+        alive_reader.store(false, std::sync::atomic::Ordering::SeqCst);
+    });
+
+    std::thread::spawn(move || {
+        let tokio_rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .expect("Failed to create tokio runtime");
+
+        let _guard = tokio_rt.enter();
+
+        // Set environment variables for this runtime
+        for (key, value) in env_vars.iter() {
+            std::env::set_var(key, value);
+        }
+
+        let main_module_url = if resolved.starts_with("npm:") || resolved.starts_with("jsr:") {
+            let cwd = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("/"));
+            deno_core::url::Url::from_directory_path(&cwd)
+                .unwrap_or_else(|_| deno_core::url::Url::parse("file:///").unwrap())
+        } else if resolved.starts_with("http://") || resolved.starts_with("https://") {
+            deno_core::url::Url::parse(&resolved).unwrap()
+        } else {
+            let path = std::path::Path::new(&resolved)
+                .canonicalize()
+                .unwrap_or_else(|_| std::path::PathBuf::from(&resolved));
+            deno_core::url::Url::from_file_path(&path)
+                .unwrap_or_else(|_| deno_core::url::Url::parse("file:///").unwrap())
+        };
+
+        // Configure MainWorker with piped stdin/stdout via deno_io
+        let mut worker = tokio_rt.block_on(async {
+            let module_loader =
+                std::rc::Rc::new(ts_loader::TsModuleLoader::new(None, HashMap::new()));
+
+            let create_web_worker_cb =
+                std::sync::Arc::new(|_| panic!("Web workers are not supported in Denox"));
+
+            let fs: deno_fs::FileSystemRc = std::sync::Arc::new(deno_fs::RealFs);
+            let permission_desc_parser =
+                std::sync::Arc::new(RuntimePermissionDescriptorParser::new(fs.clone()));
+
+            let services = WorkerServiceOptions {
+                module_loader,
+                permissions: PermissionsContainer::new(permission_desc_parser, permissions),
+                blob_store: Default::default(),
+                broadcast_channel: Default::default(),
+                feature_checker: Default::default(),
+                fs: fs.clone(),
+                node_services: None,
+                npm_process_state_provider: None,
+                root_cert_store_provider: None,
+                shared_array_buffer_store: None,
+                compiled_wasm_module_store: None,
+                v8_code_cache: None,
+            };
+
+            let mut bootstrap = BootstrapOptions::default();
+            bootstrap.args = args;
+
+            let options = WorkerOptions {
+                create_web_worker_cb,
+                bootstrap,
+                stdio: deno_io::Stdio {
+                    stdin: deno_io::StdioPipe::file(stdin_deno_read),
+                    stdout: deno_io::StdioPipe::file(stdout_deno_write),
+                    stderr: deno_io::StdioPipe::inherit(),
+                },
+                ..Default::default()
+            };
+
+            MainWorker::bootstrap_from_options(main_module_url.clone(), services, options)
+        });
+
+        // Load and run the main module
+        let specifier_url = if resolved.starts_with("npm:") || resolved.starts_with("jsr:") {
+            deno_core::url::Url::parse(&resolved).unwrap()
+        } else {
+            main_module_url.clone()
+        };
+
+        let load_result =
+            tokio_rt.block_on(async { worker.execute_main_module(&specifier_url).await });
+
+        if let Err(e) = load_result {
+            eprintln!("Error loading module: {}", e);
+            alive_clone.store(false, std::sync::atomic::Ordering::SeqCst);
+            return;
+        }
+
+        // Run the event loop until completion or stop signal.
+        let completed = tokio_rt.block_on(async {
+            tokio::time::timeout(
+                std::time::Duration::from_secs(1),
+                worker.run_event_loop(false),
+            )
+            .await
+        });
+
+        match completed {
+            Ok(Ok(())) => {
+                // Event loop completed — script finished naturally
+            }
+            Ok(Err(e)) => {
+                eprintln!("Event loop error: {}", e);
+            }
+            Err(_timeout) => {
+                // Long-running script (server, daemon, etc.)
+                tokio_rt.block_on(async {
+                    let event_loop = worker.run_event_loop(false);
+                    tokio::pin!(event_loop);
+
+                    loop {
+                        match stop_rx.try_recv() {
+                            Ok(()) | Err(mpsc::TryRecvError::Disconnected) => break,
+                            Err(mpsc::TryRecvError::Empty) => {}
+                        }
+
+                        tokio::select! {
+                            biased;
+                            result = &mut event_loop => {
+                                if let Err(e) = result {
+                                    eprintln!("Event loop error: {}", e);
+                                }
+                                break;
+                            }
+                            _ = tokio::time::sleep(std::time::Duration::from_millis(100)) => {
+                                continue;
+                            }
+                        }
+                    }
+                });
+            }
+        }
+
+        alive_clone.store(false, std::sync::atomic::Ordering::SeqCst);
+    });
+
+    Ok(ResourceArc::new(RuntimeRunResource {
+        stdin_tx,
+        stdout_rx: Mutex::new(stdout_rx),
+        stop_tx: Mutex::new(Some(stop_tx)),
+        alive,
+    }))
+}
+
+/// Send a line to the runtime's stdin channel.
+#[rustler::nif]
+pub fn runtime_run_send(
+    resource: ResourceArc<RuntimeRunResource>,
+    data: String,
+) -> Result<(), String> {
+    resource
+        .stdin_tx
+        .send(data)
+        .map_err(|_| "Runtime has shut down".to_string())
+}
+
+/// Block until a line is available from stdout, or return None if closed.
+#[rustler::nif(schedule = "DirtyIo")]
+pub fn runtime_run_recv(
+    resource: ResourceArc<RuntimeRunResource>,
+) -> Result<Option<String>, String> {
+    let rx = resource
+        .stdout_rx
+        .lock()
+        .map_err(|_| "Lock poisoned".to_string())?;
+
+    match rx.recv_timeout(std::time::Duration::from_secs(1)) {
+        Ok(line) => Ok(Some(line)),
+        Err(mpsc::RecvTimeoutError::Timeout) => Ok(None),
+        Err(mpsc::RecvTimeoutError::Disconnected) => {
+            if resource.alive.load(std::sync::atomic::Ordering::SeqCst) {
+                Ok(None)
+            } else {
+                Ok(None) // Runtime has stopped
+            }
+        }
+    }
+}
+
+/// Signal the runtime to shut down.
+#[rustler::nif]
+pub fn runtime_run_stop(resource: ResourceArc<RuntimeRunResource>) -> Result<(), String> {
+    if let Ok(mut guard) = resource.stop_tx.lock() {
+        if let Some(tx) = guard.take() {
+            let _ = tx.send(());
+        }
+    }
+    Ok(())
+}
+
+/// Check if the runtime is still running.
+#[rustler::nif]
+pub fn runtime_run_alive(resource: ResourceArc<RuntimeRunResource>) -> bool {
+    resource.alive.load(std::sync::atomic::Ordering::SeqCst)
+}

@@ -20,10 +20,7 @@ pub struct CallbackState {
 /// freezes the `core.ops` table and custom ops added via extensions are not
 /// exposed to JS. Instead, we bind a V8 function directly that accesses
 /// the CallbackState through a V8 external.
-pub fn install_callback_global(
-    runtime: &mut deno_core::JsRuntime,
-    state: CallbackState,
-) {
+pub fn install_callback_global(runtime: &mut deno_core::JsRuntime, state: CallbackState) {
     let scope = &mut runtime.handle_scope();
 
     // Store the CallbackState on the heap and wrap it in a V8 External
@@ -57,15 +54,15 @@ fn denox_callback_v8(
 ) {
     // Extract the CallbackState from the V8 External data
     let data = args.data();
-    let external = unsafe {
-        deno_core::v8::Local::<deno_core::v8::External>::cast_unchecked(data)
-    };
+    let external = unsafe { deno_core::v8::Local::<deno_core::v8::External>::cast_unchecked(data) };
     let state_ptr = external.value() as *mut CallbackState;
     let state = unsafe { &*state_ptr };
 
     // First argument is the callback name
     if args.length() < 1 {
-        let msg = deno_core::v8::String::new(scope, "Denox.callback requires at least a name argument").unwrap();
+        let msg =
+            deno_core::v8::String::new(scope, "Denox.callback requires at least a name argument")
+                .unwrap();
         let exception = deno_core::v8::Exception::type_error(scope, msg);
         scope.throw_exception(exception);
         return;
@@ -103,7 +100,11 @@ fn denox_callback_v8(
         args_json,
         reply_tx,
     }) {
-        let msg = deno_core::v8::String::new(scope, "Callback channel closed — no callback handler registered").unwrap();
+        let msg = deno_core::v8::String::new(
+            scope,
+            "Callback channel closed — no callback handler registered",
+        )
+        .unwrap();
         let exception = deno_core::v8::Exception::error(scope, msg);
         scope.throw_exception(exception);
         return;
