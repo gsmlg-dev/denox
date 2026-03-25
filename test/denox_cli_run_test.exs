@@ -445,6 +445,98 @@ defmodule DenoxCLIRunTest do
         assert line == "works"
       end
     end
+
+    test "none permissions adds no flags", %{tmp_dir: dir} do
+      if ensure_cli_configured() == :skip do
+        :ok
+      else
+        script = write_script(dir, "perm_none.ts", ~s[console.log("ok");])
+
+        {:ok, pid} = CLI.Run.start_link(file: script, permissions: :none)
+        {:ok, line} = CLI.Run.recv(pid, timeout: 5000)
+        assert line == "ok"
+      end
+    end
+
+    test "nil permissions adds no flags", %{tmp_dir: dir} do
+      if ensure_cli_configured() == :skip do
+        :ok
+      else
+        script = write_script(dir, "perm_nil.ts", ~s[console.log("ok");])
+
+        {:ok, pid} = CLI.Run.start_link(file: script)
+        {:ok, line} = CLI.Run.recv(pid, timeout: 5000)
+        assert line == "ok"
+      end
+    end
+
+    test "deny_env blocks environment variable access", %{tmp_dir: dir} do
+      if ensure_cli_configured() == :skip do
+        :ok
+      else
+        script =
+          write_script(
+            dir,
+            "deny_env.ts",
+            """
+            try {
+              const val = Deno.env.get("HOME");
+              console.log("allowed");
+            } catch (_e) {
+              console.log("denied");
+            }
+            """
+          )
+
+        {:ok, pid} =
+          CLI.Run.start_link(
+            file: script,
+            permissions: [deny_env: true]
+          )
+
+        {:ok, line} = CLI.Run.recv(pid, timeout: 5000)
+        assert line == "denied"
+      end
+    end
+
+    test "deny_read blocks file system read access", %{tmp_dir: dir} do
+      if ensure_cli_configured() == :skip do
+        :ok
+      else
+        script =
+          write_script(
+            dir,
+            "deny_read.ts",
+            """
+            try {
+              Deno.readTextFileSync("/etc/hostname");
+              console.log("allowed");
+            } catch (_e) {
+              console.log("denied");
+            }
+            """
+          )
+
+        {:ok, pid} =
+          CLI.Run.start_link(
+            file: script,
+            permissions: [allow_read: true, deny_read: ["/etc/hostname"]]
+          )
+
+        {:ok, line} = CLI.Run.recv(pid, timeout: 5000)
+        assert line == "denied"
+      end
+    end
+
+    test "unknown permission flag exits with ArgumentError" do
+      {_pid, ref} =
+        spawn_monitor(fn ->
+          CLI.Run.start_link(file: "test.ts", permissions: [bogus_flag: true])
+        end)
+
+      assert_receive {:DOWN, ^ref, :process, _pid, {%ArgumentError{message: msg}, _stack}}, 1000
+      assert msg =~ "unknown permission flag"
+    end
   end
 
   describe "capture/1" do

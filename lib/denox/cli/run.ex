@@ -69,11 +69,13 @@ defmodule Denox.CLI.Run do
   @impl Denox.Run.Base
   @spec init_backend(keyword()) :: {:ok, map()} | {:error, term()}
   def init_backend(opts) do
+    # Validate permissions/args eagerly so callers get ArgumentError before
+    # any CLI lookup (e.g. unknown permission flag is a programming error).
+    args = build_args(opts)
+    env = build_env(opts)
+
     case find_deno() do
       {:ok, deno_path} ->
-        args = build_args(opts)
-        env = build_env(opts)
-
         port =
           Port.open({:spawn_executable, deno_path}, [
             :binary,
