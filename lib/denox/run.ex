@@ -51,6 +51,31 @@ defmodule Denox.Run do
       # Stop the process
       Denox.Run.stop(pid)
 
+  ## Convenience Functions
+
+  Several higher-level helpers are available for common patterns:
+
+      # One-shot: collect all output and return a list
+      {:ok, lines} = Denox.Run.capture(file: "scripts/build.ts", permissions: :all)
+
+      # Lazy stream: process lines one at a time (early exit supported)
+      Denox.Run.stream(file: "scripts/generate.ts", permissions: :all)
+      |> Stream.filter(&String.contains?(&1, "ERROR"))
+      |> Enum.to_list()
+
+      # Bracket-style: guaranteed cleanup even on exception
+      Denox.Run.with_runtime([file: "scripts/server.ts", permissions: :all], fn pid ->
+        :ok = Denox.Run.send(pid, Jason.encode!(%{method: "init"}))
+        {:ok, response} = Denox.Run.recv(pid, timeout: 10_000)
+        Jason.decode!(response)
+      end)
+
+      # Bracket + lazy stream from an existing PID
+      Denox.Run.with_runtime([file: "scripts/gen.ts", permissions: :all], fn pid ->
+        :ok = Denox.Run.send(pid, Jason.encode!(request))
+        Denox.Run.stream_from(pid, timeout: 10_000) |> Enum.to_list()
+      end)
+
   ## Telemetry Events
 
   Denox.Run emits the following telemetry events:
