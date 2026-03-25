@@ -2,6 +2,10 @@
 
 ### Changes (since previous release)
 
+- test: add `CallbackHandler` non-JSON-serializable return value test — verifies that
+  when a callback function returns a value that cannot be JSON-encoded (e.g., a PID),
+  the `rescue` clause catches the `JSON.EncodeError` and sends it to JS as an error
+  tuple rather than crashing the handler
 - test: add `stream/1` RuntimeError test — verifies that when `start_link` fails
   (e.g., neither `:file` nor `:package` provided), the stream raises `RuntimeError`
   when enumerated, as documented in the `@doc` warning block

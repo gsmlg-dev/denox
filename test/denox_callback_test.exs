@@ -82,6 +82,24 @@ defmodule Denox.CallbackTest do
       {:error, msg} = Denox.eval(rt, ~s[Denox.callback("fail")])
       assert msg =~ "intentional error"
     end
+
+    test "callback returning non-JSON-serializable value returns error to JS" do
+      # When Denox.JSON.encode!(result) raises, the rescue clause in CallbackHandler
+      # sends callback_error with the encode exception message.
+      {:ok, rt, _handler} =
+        CallbackHandler.runtime(
+          callbacks: %{
+            # A PID cannot be JSON-encoded by the standard JSON encoder
+            "returns_pid" => fn _ -> self() end
+          }
+        )
+
+      # JavaScript should receive an error, not crash or hang
+      {:error, msg} = Denox.eval(rt, ~s[Denox.callback("returns_pid")])
+      # The error should mention encoding or be a protocol error
+      assert is_binary(msg)
+      assert String.length(msg) > 0
+    end
   end
 
   describe "callbacks with eval_async" do
