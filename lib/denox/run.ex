@@ -124,6 +124,7 @@ defmodule Denox.Run do
   # --- Backend callbacks ---
 
   @impl Denox.Run.Base
+  @spec init_backend(keyword()) :: {:ok, map()} | {:error, term()}
   def init_backend(opts) do
     package = Keyword.get(opts, :package)
     file = Keyword.get(opts, :file)
@@ -167,6 +168,7 @@ defmodule Denox.Run do
   end
 
   @impl Denox.Run.Base
+  @spec send_backend(map(), String.t()) :: :ok | {:error, term()}
   def send_backend(%{resource: resource}, data) do
     case Denox.Native.runtime_run_send(resource, data) do
       {:ok, _} -> :ok
@@ -175,6 +177,7 @@ defmodule Denox.Run do
   end
 
   @impl Denox.Run.Base
+  @spec stop_backend(map()) :: :ok
   def stop_backend(%{resource: resource, receiver_pid: receiver_pid}) do
     Denox.Native.runtime_run_stop(resource)
     Process.unlink(receiver_pid)
@@ -183,6 +186,7 @@ defmodule Denox.Run do
   end
 
   @impl Denox.Run.Base
+  @spec alive_backend?(map()) :: boolean()
   def alive_backend?(%{resource: resource}) do
     Denox.Native.runtime_run_alive(resource)
   end

@@ -67,6 +67,7 @@ defmodule Denox.CLI.Run do
   # --- Backend callbacks ---
 
   @impl Denox.Run.Base
+  @spec init_backend(keyword()) :: {:ok, map()} | {:error, term()}
   def init_backend(opts) do
     case find_deno() do
       {:ok, deno_path} ->
@@ -98,6 +99,7 @@ defmodule Denox.CLI.Run do
   end
 
   @impl Denox.Run.Base
+  @spec send_backend(map(), String.t()) :: :ok | {:error, term()}
   def send_backend(%{port: port}, data) do
     Port.command(port, data)
     :ok
@@ -106,12 +108,14 @@ defmodule Denox.CLI.Run do
   end
 
   @impl Denox.Run.Base
+  @spec stop_backend(map()) :: :ok
   def stop_backend(%{port: port}) do
     Port.close(port)
     :ok
   end
 
   @impl Denox.Run.Base
+  @spec alive_backend?(map()) :: boolean()
   def alive_backend?(%{port: port}) do
     Port.info(port) != nil
   end

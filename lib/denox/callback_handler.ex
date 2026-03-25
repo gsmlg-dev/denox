@@ -70,11 +70,13 @@ defmodule Denox.CallbackHandler do
   end
 
   @impl true
+  @spec init(map()) :: {:ok, map()}
   def init(state) do
     {:ok, state}
   end
 
   @impl true
+  @spec handle_info(term(), map()) :: {:noreply, map()}
   def handle_info({:denox_callback, resource, callback_id, name, args_json}, state) do
     callbacks = state.callbacks
 
