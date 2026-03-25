@@ -8,6 +8,9 @@
 - refactor: extract `RuntimeRunResource` and NIF functions into `runtime_run.rs`
 - fix: add panic safety (`catch_unwind`) to runtime threads
 
+- chore: add `@spec` annotations to callback implementations in `Denox.Run`,
+  `Denox.CLI.Run`, and `Denox.CallbackHandler`
+
 ### Improvements
 
 - `Denox.Run` stdin/stdout now uses native OS pipe bridging via `deno_io::Stdio`/`StdioPipe`
