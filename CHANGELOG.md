@@ -2,6 +2,10 @@
 
 ### Changes (since previous release)
 
+- test: add `unsubscribe/1` idempotency tests — unsubscribing a PID that was never
+  subscribed, and calling unsubscribe twice after one subscribe, both return `:ok`
+  without error (verified against `Denox.Run.Base.__handle_call__/4` logic)
+
 - refactor: extract `Denox.Permissions` module to centralize NIF permission JSON
   building — eliminates duplicate `@valid_permission_keys` and `build_permissions_json`
   between `Denox` and `Denox.Run`

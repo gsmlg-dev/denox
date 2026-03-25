@@ -398,6 +398,39 @@ defmodule DenoxRunTest do
       Denox.Run.send(pid, "go")
       refute_receive {:denox_run_stdout, ^pid, _}, 1000
     end
+
+    test "unsubscribe without prior subscribe is idempotent", %{tmp_dir: dir} do
+      script = write_script(dir, "unsub_noop.ts", "await new Promise(() => {});")
+
+      {:ok, pid} =
+        Denox.Run.start_link(
+          file: script,
+          permissions: :all
+        )
+
+      # Unsubscribe on a PID that was never subscribed — should return :ok without crashing
+      assert :ok = Denox.Run.unsubscribe(pid)
+      assert :ok = Denox.Run.unsubscribe(pid)
+
+      Denox.Run.stop(pid)
+    end
+
+    test "double unsubscribe after subscribe is idempotent", %{tmp_dir: dir} do
+      script = write_script(dir, "unsub_double.ts", "await new Promise(() => {});")
+
+      {:ok, pid} =
+        Denox.Run.start_link(
+          file: script,
+          permissions: :all
+        )
+
+      Denox.Run.subscribe(pid)
+      assert :ok = Denox.Run.unsubscribe(pid)
+      # Second unsubscribe on already-removed subscription
+      assert :ok = Denox.Run.unsubscribe(pid)
+
+      Denox.Run.stop(pid)
+    end
   end
 
   describe "telemetry" do
