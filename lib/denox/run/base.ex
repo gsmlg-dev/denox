@@ -139,6 +139,35 @@ defmodule Denox.Run.Base do
       end
 
       @doc """
+      Send data to stdin and wait for the next stdout line.
+
+      A convenience wrapper around `send/2` + `recv/2` for the common
+      request-response pattern (e.g. JSON-RPC over stdio, MCP servers).
+
+      Returns `{:ok, response_line}` or `{:error, reason}` where reason is
+      `:timeout`, `:closed`, or the send error.
+
+      ## Options
+
+        - `:timeout` - milliseconds to wait for a response (default: 5000)
+
+      ## Example
+
+          request = Jason.encode!(%{jsonrpc: "2.0", method: "ping", id: 1})
+          {:ok, response_line} = Denox.Run.send_and_recv(pid, request, timeout: 5000)
+          response = Jason.decode!(response_line)
+
+      """
+      @spec send_and_recv(GenServer.server(), String.t(), keyword()) ::
+              {:ok, String.t()} | {:error, term()}
+      def send_and_recv(server, data, opts \\ []) do
+        case __MODULE__.send(server, data) do
+          :ok -> recv(server, opts)
+          {:error, _} = error -> error
+        end
+      end
+
+      @doc """
       Subscribe the calling process to stdout messages.
 
       After subscribing, the calling process will receive:

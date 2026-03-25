@@ -1346,4 +1346,48 @@ defmodule DenoxRunTest do
       assert lines == []
     end
   end
+
+  describe "send_and_recv/3" do
+    test "sends data and receives the response in one call", %{tmp_dir: dir} do
+      script =
+        write_script(dir, "echo_server.ts", """
+        const decoder = new TextDecoder();
+        const encoder = new TextEncoder();
+
+        const buf = new Uint8Array(4096);
+        const n = await Deno.stdin.read(buf);
+        const input = decoder.decode(buf.subarray(0, n!)).trim();
+        await Deno.stdout.write(encoder.encode("echo: " + input + "\\n"));
+        """)
+
+      {:ok, pid} = Denox.Run.start_link(file: script, permissions: :all)
+      assert {:ok, "echo: hello"} = Denox.Run.send_and_recv(pid, "hello", timeout: 5000)
+    end
+
+    test "returns {:error, :closed} when runtime has exited", %{tmp_dir: dir} do
+      script = write_script(dir, "exit_immediately.ts", "// exits immediately")
+
+      {:ok, pid} = Denox.Run.start_link(file: script, permissions: :all)
+
+      # Wait for exit
+      Denox.Run.subscribe(pid)
+
+      receive do
+        {:denox_run_exit, ^pid, _} -> :ok
+      after
+        5000 -> flunk("Runtime did not exit")
+      end
+
+      assert {:error, :closed} = Denox.Run.send_and_recv(pid, "data")
+    end
+
+    test "returns {:error, :timeout} when no response arrives", %{tmp_dir: dir} do
+      script = write_script(dir, "silent_server.ts", "await new Promise(() => {});")
+
+      {:ok, pid} = Denox.Run.start_link(file: script, permissions: :all)
+      assert {:error, :timeout} = Denox.Run.send_and_recv(pid, "request", timeout: 200)
+
+      Denox.Run.stop(pid)
+    end
+  end
 end
