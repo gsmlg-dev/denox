@@ -129,6 +129,40 @@ defmodule DenoxSandboxTest do
     end
   end
 
+  describe "permission enforcement" do
+    test "permissions: :none denies environment variable access" do
+      {:ok, rt} = Denox.runtime(permissions: :none)
+
+      assert {:error, msg} = Denox.eval(rt, "Deno.env.get('HOME')")
+      assert msg =~ "Requires env access"
+    end
+
+    test "permissions: :all allows environment variable access" do
+      {:ok, rt} = Denox.runtime(permissions: :all)
+
+      assert {:ok, _} = Denox.eval(rt, "Deno.env.get('HOME') ?? 'unset'")
+    end
+
+    test "granular allow_env: true permits env access" do
+      {:ok, rt} = Denox.runtime(permissions: [allow_env: true])
+
+      assert {:ok, _} = Denox.eval(rt, "Deno.env.get('HOME') ?? 'unset'")
+    end
+
+    test "granular allow_env with specific vars limits access" do
+      {:ok, rt} = Denox.runtime(permissions: [allow_env: ["HOME"]])
+
+      assert {:ok, _} = Denox.eval(rt, "Deno.env.get('HOME') ?? 'unset'")
+    end
+
+    test "permissions: :none denies file read access" do
+      {:ok, rt} = Denox.runtime(permissions: :none)
+
+      assert {:error, msg} = Denox.eval(rt, "Deno.readTextFileSync('/etc/hostname')")
+      assert msg =~ "Requires read access"
+    end
+  end
+
   describe "sandbox and permissions interaction" do
     test "sandbox: true with no permissions option uses deny_all" do
       # sandbox: true, no permissions → should use deny_all path
