@@ -62,6 +62,14 @@ defmodule DenoxPoolTest do
       assert msg =~ "exec error" or msg =~ "Error"
     end
 
+    test "exec_ts returns error when TypeScript code throws" do
+      pool = :"test_pool_exec_ts_err_#{:erlang.unique_integer([:positive])}"
+      start_supervised!({Denox.Pool, name: pool, size: 1})
+
+      assert {:error, msg} = Denox.Pool.exec_ts(pool, "throw new Error('ts exec error')")
+      assert msg =~ "ts exec error" or msg =~ "Error"
+    end
+
     test "eval_decode returns Elixir terms", %{pool: pool} do
       assert {:ok, %{"a" => 1}} = Denox.Pool.eval_decode(pool, "({a: 1})")
     end
