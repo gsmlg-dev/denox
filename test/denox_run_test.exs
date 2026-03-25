@@ -1343,7 +1343,6 @@ defmodule DenoxRunTest do
   end
 
   describe "stream_from/2" do
-    @tag :deno
     test "yields lines from an already-running server", %{tmp_dir: dir} do
       script =
         write_script(dir, "three_output.ts", """
@@ -1357,7 +1356,6 @@ defmodule DenoxRunTest do
       assert lines == ["x", "y", "z"]
     end
 
-    @tag :deno
     test "halts when runtime exits without consuming all output", %{tmp_dir: dir} do
       script =
         write_script(dir, "five_lines.ts", """
@@ -1370,7 +1368,6 @@ defmodule DenoxRunTest do
       Denox.Run.stop(pid)
     end
 
-    @tag :deno
     test "does not stop the server when the stream halts", %{tmp_dir: dir} do
       script = write_script(dir, "noop_forever.ts", "await new Promise(() => {});")
 
@@ -1381,7 +1378,6 @@ defmodule DenoxRunTest do
       Denox.Run.stop(pid)
     end
 
-    @tag :deno
     test "works as part of with_runtime/2 for request-response pattern", %{tmp_dir: dir} do
       script =
         write_script(dir, "echo_three.ts", """
@@ -1448,7 +1444,6 @@ defmodule DenoxRunTest do
   end
 
   describe "with_runtime/2" do
-    @tag :deno
     test "returns the value from the function", %{tmp_dir: dir} do
       script =
         write_script(dir, "echo_once.ts", """
@@ -1469,7 +1464,6 @@ defmodule DenoxRunTest do
       assert result == "hello_with_runtime"
     end
 
-    @tag :deno
     test "stops the runtime even when the function raises", %{tmp_dir: dir} do
       script = write_script(dir, "noop_server.ts", "await new Promise(() => {});")
 
