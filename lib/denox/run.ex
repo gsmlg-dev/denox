@@ -233,33 +233,9 @@ defmodule Denox.Run do
     end
   end
 
-  @spec build_permissions_json(:all | :none | nil | keyword()) :: String.t()
-  defp build_permissions_json(:all), do: Denox.JSON.encode!(%{"mode" => "allow_all"})
-  # nil and :none both map to deny_all for backward compatibility
-  defp build_permissions_json(nil), do: Denox.JSON.encode!(%{"mode" => "deny_all"})
-  defp build_permissions_json(:none), do: Denox.JSON.encode!(%{"mode" => "deny_all"})
-
-  @valid_permission_keys ~w(
-    allow_read allow_write allow_net allow_env allow_run allow_ffi allow_sys
-    deny_read deny_write deny_net deny_env deny_run deny_ffi deny_sys
-  )a
-
-  defp build_permissions_json(perms) when is_list(perms) do
-    granular =
-      Enum.reduce(perms, %{"mode" => "granular"}, fn
-        {key, true}, acc when key in @valid_permission_keys ->
-          Map.put(acc, Atom.to_string(key), true)
-
-        {key, values}, acc when key in @valid_permission_keys and is_list(values) ->
-          Map.put(acc, Atom.to_string(key), values)
-
-        {_key, false}, acc ->
-          acc
-
-        {key, _value}, _acc ->
-          raise ArgumentError, "unknown permission key: #{inspect(key)}"
-      end)
-
-    Denox.JSON.encode!(granular)
+  defp build_permissions_json(permissions) do
+    # nil maps to deny_all for backward compatibility (NIF backend defaults to deny)
+    perms = if is_nil(permissions), do: :none, else: permissions
+    Denox.Permissions.to_nif_json(perms)
   end
 end
