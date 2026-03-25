@@ -110,7 +110,10 @@ defmodule Denox.Run.Base do
 
         - `:package` - JSR/npm package specifier
         - `:file` - local file path to run
-        - `:permissions` - `:all` for `-A`, or keyword list
+        - `:permissions` - permission mode; defaults to `:none` (deny all) when omitted:
+          - `:all` — allow all permissions (`-A` in Deno CLI)
+          - `:none` — deny all permissions (Deno's default behaviour)
+          - keyword list — granular permissions, e.g. `[allow_net: true, allow_read: ["/tmp"]]`
         - `:env` - map of environment variables
         - `:args` - extra arguments after the specifier
         - `:name` - GenServer name for registration
