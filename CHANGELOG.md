@@ -2,11 +2,14 @@
 
 ### Changes
 
-- fix: tag deno-dependent tests with :deno to skip in CI
-
+- fix: tag deno-dependent tests with `:deno` to skip in CI
+- fix(ci): set `MIX_ENV=test` for E2E workflow
 
 ### Improvements
 
+- `Denox.Run.Base` now has a proper `@moduledoc` documenting the shared behaviour
+  contract (`init_backend/1`, `send_backend/2`, `stop_backend/1`, `alive_backend?/1`)
+  for backend implementors.
 - `Denox.Run` documentation now explicitly states that `npm:` and `jsr:` specifiers
   are **not supported** by the NIF backend (TsModuleLoader only handles `file://`,
   `https://`, and `http://` schemes). Users are directed to `Denox.CLI.Run` for
@@ -14,6 +17,10 @@
 - Test coverage expanded: Web Streams API (`ReadableStream`, `TransformStream`,
   `TextEncoderStream`, `TextDecoderStream`), `Blob`, `MessageChannel`, Promise
   combinators (`Promise.all/race/allSettled/any`), `setTimeout`/`setInterval`.
+- Added granular permission enforcement tests: `deny_all` blocks file writes and
+  network access, `allow_write` permits specific paths, `allow_env` permits specific
+  environment variables.
+- PRD checklist fully verified (29/29 items passing).
 
 ## v0.5.0 — 2026-03-22
 

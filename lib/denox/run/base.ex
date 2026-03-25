@@ -1,14 +1,25 @@
 defmodule Denox.Run.Base do
-  @moduledoc false
-  # Shared GenServer dispatch logic for Run modules.
-  #
-  # Provides the common public API (send, recv, subscribe, etc.)
-  # and stdout dispatch logic. Backend modules implement:
-  #
-  #   - init_backend/1 — start the backend (NIF resource or Port)
-  #   - send_backend/2 — write data to the backend
-  #   - stop_backend/1 — shut down the backend
-  #   - alive_backend?/1 — check if backend is running
+  @moduledoc """
+  Shared GenServer dispatch logic for Run modules.
+
+  This module provides a `__using__` macro that injects GenServer boilerplate,
+  a common public API (`send/2`, `recv/2`, `subscribe/1`, `unsubscribe/1`,
+  `alive?/1`, `stop/1`), and stdout dispatch logic for both the NIF-backed
+  `Denox.Run` and the CLI-backed `Denox.CLI.Run`.
+
+  ## Implementing a Backend
+
+  Modules that `use Denox.Run.Base, backend: :my_backend` must implement four
+  callbacks:
+
+    * `c:init_backend/1` — start the backend (NIF resource or Port)
+    * `c:send_backend/2` — write data to the backend's stdin
+    * `c:stop_backend/1` — shut down the backend
+    * `c:alive_backend?/1` — check if the backend is still running
+
+  See `Denox.Run` (NIF backend) and `Denox.CLI.Run` (subprocess backend) for
+  concrete implementations.
+  """
 
   @callback init_backend(keyword()) ::
               {:ok, backend_state :: term()} | {:error, term()}

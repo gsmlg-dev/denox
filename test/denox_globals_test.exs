@@ -657,5 +657,44 @@ defmodule DenoxGlobalsTest do
 
       assert {:ok, ~s("allowed")} = Denox.eval(rt, ~s[Deno.readTextFileSync("#{path}")])
     end
+
+    test "deny_all mode blocks file writes" do
+      {:ok, rt} = Denox.runtime(permissions: :none)
+
+      path =
+        Path.join(System.tmp_dir!(), "denox_deny_write_#{System.unique_integer([:positive])}.txt")
+
+      assert {:error, msg} = Denox.eval(rt, ~s[Deno.writeTextFileSync("#{path}", "nope"); "ok"])
+      assert msg =~ "write access"
+      refute File.exists?(path)
+    end
+
+    test "granular allow_write permits specific paths" do
+      tmp = System.tmp_dir!()
+      {:ok, rt} = Denox.runtime(permissions: [allow_write: [tmp], allow_read: [tmp]])
+      path = Path.join(tmp, "denox_allow_write_#{System.unique_integer([:positive])}.txt")
+      on_exit(fn -> File.rm(path) end)
+
+      assert {:ok, ~s("ok")} =
+               Denox.eval(rt, ~s[Deno.writeTextFileSync("#{path}", "written"); "ok"])
+
+      assert File.read!(path) == "written"
+    end
+
+    test "deny_all mode blocks network access" do
+      {:ok, rt} = Denox.runtime(permissions: :none)
+
+      task =
+        Denox.eval_async(rt, ~s[export default (await fetch("https://example.com")).status])
+
+      assert {:error, msg} = Task.await(task, 10_000)
+      assert msg =~ "net access"
+    end
+
+    test "granular allow_env permits specific variables" do
+      {:ok, rt} = Denox.runtime(permissions: [allow_env: ["DENOX_PERM_TEST"]])
+      :ok = Denox.exec(rt, ~s[Deno.env.set("DENOX_PERM_TEST", "visible")])
+      assert {:ok, ~s("visible")} = Denox.eval(rt, ~s[Deno.env.get("DENOX_PERM_TEST")])
+    end
   end
 end
