@@ -351,6 +351,37 @@ defmodule DenoxCLIRunTest do
         :telemetry.detach("test-cli-start-#{inspect(ref)}")
       end
     end
+
+    test "emits :stop event with exit_status and backend: :cli", %{tmp_dir: dir} do
+      if ensure_cli_configured() == :skip do
+        :ok
+      else
+        ref = make_ref()
+        test_pid = self()
+
+        :telemetry.attach(
+          "test-cli-stop-#{inspect(ref)}",
+          [:denox, :run, :stop],
+          fn _event, measurements, metadata, _ ->
+            send(test_pid, {:telemetry_stop, measurements, metadata})
+          end,
+          nil
+        )
+
+        script = write_script(dir, "telem_stop.ts", ~s[console.log("bye");])
+
+        {:ok, pid} = CLI.Run.start_link(file: script, permissions: :all)
+
+        # Wait for the process to exit naturally
+        CLI.Run.subscribe(pid)
+        assert_receive {:denox_run_exit, ^pid, 0}, 5000
+
+        assert_receive {:telemetry_stop, %{system_time: _}, %{exit_status: 0, backend: :cli}},
+                       1000
+
+        :telemetry.detach("test-cli-stop-#{inspect(ref)}")
+      end
+    end
   end
 
   describe "send/2 edge cases" do
@@ -471,6 +502,72 @@ defmodule DenoxCLIRunTest do
           end)
 
         assert result == "hello_cli"
+      end
+    end
+  end
+
+  describe "stream_from/2" do
+    test "yields lines from an already-running process", %{tmp_dir: dir} do
+      if ensure_cli_configured() == :skip do
+        :ok
+      else
+        script =
+          write_script(dir, "stream_from_echo.ts", """
+          const buf = new Uint8Array(4096);
+          const n = await Deno.stdin.read(buf);
+          if (n) {
+            const line = new TextDecoder().decode(buf.subarray(0, n)).trim();
+            console.log("echo:" + line);
+          }
+          """)
+
+        CLI.Run.with_runtime([file: script, permissions: :all], fn pid ->
+          :ok = CLI.Run.send(pid, "test_stream_from")
+
+          lines =
+            CLI.Run.stream_from(pid, timeout: 5000)
+            |> Enum.take(1)
+
+          assert lines == ["echo:test_stream_from"]
+          # Process should still be alive after stream halts
+          assert Process.alive?(pid)
+        end)
+      end
+    end
+  end
+
+  describe "send_and_recv/3" do
+    test "sends data and receives response in one call", %{tmp_dir: dir} do
+      if ensure_cli_configured() == :skip do
+        :ok
+      else
+        script =
+          write_script(dir, "send_recv_echo.ts", """
+          const buf = new Uint8Array(4096);
+          const n = await Deno.stdin.read(buf);
+          if (n) {
+            const line = new TextDecoder().decode(buf.subarray(0, n)).trim();
+            console.log("reply:" + line);
+          }
+          """)
+
+        {:ok, pid} = CLI.Run.start_link(file: script, permissions: :all)
+        assert {:ok, "reply:ping"} = CLI.Run.send_and_recv(pid, "ping", timeout: 5000)
+      end
+    end
+
+    test "returns {:error, :timeout} when no response arrives", %{tmp_dir: dir} do
+      if ensure_cli_configured() == :skip do
+        :ok
+      else
+        script =
+          write_script(dir, "send_recv_silent.ts", """
+          await new Promise(() => {});
+          """)
+
+        {:ok, pid} = CLI.Run.start_link(file: script, permissions: :all)
+        assert {:error, :timeout} = CLI.Run.send_and_recv(pid, "hello", timeout: 200)
+        CLI.Run.stop(pid)
       end
     end
   end

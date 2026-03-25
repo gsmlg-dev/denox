@@ -333,6 +333,7 @@ defmodule DenoxMixTasksTest do
       end
     end
 
+    @tag timeout: 120_000
     test "raises when CLI install fails (non-existent version)" do
       Mix.Task.reenable("denox.cli.install")
       version = "999.999.999-nonexistent"
