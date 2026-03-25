@@ -157,6 +157,23 @@ defmodule DenoxRunTest do
 
       assert_receive {:denox_run_exit, ^pid, 0}, 5000
     end
+
+    test "duplicate subscribe is idempotent (only one message per line)", %{tmp_dir: dir} do
+      script =
+        write_script(dir, "dedup_sub.ts", """
+        console.log("once");
+        """)
+
+      {:ok, pid} = Denox.Run.start_link(file: script, permissions: :all)
+
+      # Subscribe twice from the same process
+      Denox.Run.subscribe(pid)
+      Denox.Run.subscribe(pid)
+
+      assert_receive {:denox_run_stdout, ^pid, "once"}, 5000
+      # Should NOT receive the line a second time
+      refute_receive {:denox_run_stdout, ^pid, "once"}, 200
+    end
   end
 
   describe "alive?/1" do

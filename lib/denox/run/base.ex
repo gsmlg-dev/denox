@@ -609,8 +609,12 @@ defmodule Denox.Run.Base do
   end
 
   def __handle_call__(_module, {:subscribe, pid}, _from, state) do
-    ref = Process.monitor(pid)
-    {:reply, :ok, %{state | subscribers: [{pid, ref} | state.subscribers]}}
+    if Enum.any?(state.subscribers, fn {p, _ref} -> p == pid end) do
+      {:reply, :ok, state}
+    else
+      ref = Process.monitor(pid)
+      {:reply, :ok, %{state | subscribers: [{pid, ref} | state.subscribers]}}
+    end
   end
 
   def __handle_call__(_module, {:unsubscribe, pid}, _from, state) do

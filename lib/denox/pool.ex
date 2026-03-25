@@ -227,18 +227,21 @@ defmodule Denox.Pool do
 
     runtimes =
       for _ <- 1..pool_size do
-        case Denox.runtime(runtime_opts) do
-          {:ok, rt} -> rt
-          {:error, msg} -> raise "Failed to create runtime: #{msg}"
-        end
+        Denox.runtime(runtime_opts)
       end
 
-    {:ok,
-     %{
-       runtimes: List.to_tuple(runtimes),
-       size: pool_size,
-       index: 0
-     }}
+    case Enum.find(runtimes, &match?({:error, _}, &1)) do
+      {:error, msg} ->
+        {:stop, {:failed_to_create_runtime, msg}}
+
+      nil ->
+        {:ok,
+         %{
+           runtimes: runtimes |> Enum.map(fn {:ok, rt} -> rt end) |> List.to_tuple(),
+           size: pool_size,
+           index: 0
+         }}
+    end
   end
 
   @impl true
