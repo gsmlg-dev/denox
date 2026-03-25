@@ -1189,5 +1189,37 @@ defmodule DenoxRunTest do
       assert Enum.at(lines, 0) == "line-0"
       assert Enum.at(lines, 99) == "line-99"
     end
+
+    test "JSON-RPC round-trip (MCP pattern)", %{tmp_dir: dir} do
+      script =
+        write_script(dir, "jsonrpc.ts", """
+        const decoder = new TextDecoder();
+        const encoder = new TextEncoder();
+
+        const buf = new Uint8Array(4096);
+        const n = await Deno.stdin.read(buf);
+        const request = JSON.parse(decoder.decode(buf.subarray(0, n!)).trim());
+
+        const response = {
+          jsonrpc: "2.0",
+          id: request.id,
+          result: { name: "test-server", version: "1.0" }
+        };
+
+        await Deno.stdout.write(encoder.encode(JSON.stringify(response) + "\\n"));
+        """)
+
+      {:ok, pid} = Denox.Run.start_link(file: script, permissions: :all)
+
+      request = Jason.encode!(%{jsonrpc: "2.0", method: "initialize", id: 1})
+      :ok = Denox.Run.send(pid, request)
+
+      {:ok, line} = Denox.Run.recv(pid, timeout: 5000)
+      response = Jason.decode!(line)
+
+      assert response["jsonrpc"] == "2.0"
+      assert response["id"] == 1
+      assert response["result"]["name"] == "test-server"
+    end
   end
 end
