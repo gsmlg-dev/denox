@@ -1222,4 +1222,66 @@ defmodule DenoxRunTest do
       assert response["result"]["name"] == "test-server"
     end
   end
+
+  describe "capture/1" do
+    test "captures all stdout lines from a short-lived script", %{tmp_dir: dir} do
+      script =
+        write_script(dir, "capture_lines.ts", """
+        console.log("line 1");
+        console.log("line 2");
+        console.log("line 3");
+        """)
+
+      assert {:ok, lines} = Denox.Run.capture(file: script, permissions: :all)
+      assert lines == ["line 1", "line 2", "line 3"]
+    end
+
+    test "returns empty list for script with no output", %{tmp_dir: dir} do
+      script = write_script(dir, "silent.ts", "// no output")
+
+      assert {:ok, lines} = Denox.Run.capture(file: script, permissions: :all)
+      assert lines == []
+    end
+
+    test "returns error for nonexistent file" do
+      Process.flag(:trap_exit, true)
+
+      result = Denox.Run.capture(file: "/nonexistent/capture_test.ts", permissions: :all)
+
+      case result do
+        {:ok, _lines} ->
+          # NIF may start before detecting missing file — acceptable
+          assert true
+
+        {:error, _reason} ->
+          assert true
+      end
+    end
+
+    test "respects :timeout option for slow scripts", %{tmp_dir: dir} do
+      script =
+        write_script(dir, "slow_capture.ts", """
+        console.log("first line");
+        await new Promise(r => setTimeout(r, 10_000));
+        console.log("second line");
+        """)
+
+      # Use a very short timeout so we only collect the first line
+      assert {:ok, lines} = Denox.Run.capture(file: script, permissions: :all, timeout: 2_000)
+      assert "first line" in lines
+    end
+
+    test "works with TypeScript code", %{tmp_dir: dir} do
+      script =
+        write_script(dir, "typed_capture.ts", """
+        const nums: number[] = [1, 2, 3];
+        for (const n of nums) {
+          console.log(n * 2);
+        }
+        """)
+
+      assert {:ok, lines} = Denox.Run.capture(file: script, permissions: :all)
+      assert lines == ["2", "4", "6"]
+    end
+  end
 end

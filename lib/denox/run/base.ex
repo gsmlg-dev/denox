@@ -189,6 +189,56 @@ defmodule Denox.Run.Base do
         GenServer.stop(server, :normal)
       end
 
+      @doc """
+      Run a script and capture all stdout output.
+
+      Starts a managed runtime, collects all output lines until the script
+      exits or the per-line timeout is reached, then stops the runtime.
+
+      Returns `{:ok, lines}` where `lines` is a list of stdout lines in order,
+      or `{:error, reason}` if the runtime failed to start.
+
+      ## Options
+
+      Same as `start_link/1`, plus:
+
+        - `:timeout` - per-line receive timeout in milliseconds (default: `30_000`).
+          If no new line arrives within this window, collection stops and the
+          lines collected so far are returned.
+
+      ## Example
+
+          {:ok, lines} = Denox.Run.capture(
+            file: "scripts/generate.ts",
+            permissions: :all
+          )
+          # lines => ["line 1", "line 2", ...]
+
+      """
+      @spec capture(keyword()) :: {:ok, [String.t()]} | {:error, term()}
+      def capture(opts) do
+        timeout = Keyword.get(opts, :timeout, 30_000)
+        start_opts = Keyword.delete(opts, :timeout)
+
+        case start_link(start_opts) do
+          {:ok, pid} ->
+            lines = do_capture_loop(pid, [], timeout)
+            stop(pid)
+            {:ok, lines}
+
+          {:error, reason} ->
+            {:error, reason}
+        end
+      end
+
+      defp do_capture_loop(pid, acc, timeout) do
+        case recv(pid, timeout: timeout) do
+          {:ok, line} -> do_capture_loop(pid, [line | acc], timeout)
+          {:error, :closed} -> Enum.reverse(acc)
+          {:error, :timeout} -> Enum.reverse(acc)
+        end
+      end
+
       # --- GenServer callbacks ---
 
       @impl true
