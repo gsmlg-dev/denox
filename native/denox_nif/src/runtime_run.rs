@@ -106,10 +106,10 @@ pub fn runtime_run(
                     if stdin_pipe_writer.write_all(line.as_bytes()).is_err() {
                         break;
                     }
-                    if !line.ends_with('\n') {
-                        if stdin_pipe_writer.write_all(b"\n").is_err() {
-                            break;
-                        }
+                    if !line.ends_with('\n')
+                        && stdin_pipe_writer.write_all(b"\n").is_err()
+                    {
+                        break;
                     }
                     if stdin_pipe_writer.flush().is_err() {
                         break;
@@ -214,8 +214,10 @@ pub fn runtime_run(
                     v8_code_cache: None,
                 };
 
-                let mut bootstrap = BootstrapOptions::default();
-                bootstrap.args = args;
+                let bootstrap = BootstrapOptions {
+                    args,
+                    ..Default::default()
+                };
 
                 let options = WorkerOptions {
                     create_web_worker_cb,

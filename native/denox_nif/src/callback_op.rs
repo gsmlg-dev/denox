@@ -94,12 +94,16 @@ fn denox_callback_v8(
     let (reply_tx, reply_rx) = mpsc::channel();
 
     // Send the request to the NIF caller
-    if let Err(_) = state.request_tx.send(CallbackRequest {
-        id,
-        name,
-        args_json,
-        reply_tx,
-    }) {
+    if state
+        .request_tx
+        .send(CallbackRequest {
+            id,
+            name,
+            args_json,
+            reply_tx,
+        })
+        .is_err()
+    {
         let msg = deno_core::v8::String::new(
             scope,
             "Callback channel closed — no callback handler registered",
@@ -115,7 +119,7 @@ fn denox_callback_v8(
         Ok(Ok(result_json)) => {
             // Parse the result JSON and return the value
             let json_str = deno_core::v8::String::new(scope, &result_json).unwrap();
-            let parsed = deno_core::v8::json::parse(scope, json_str.into());
+            let parsed = deno_core::v8::json::parse(scope, json_str);
             match parsed {
                 Some(val) => retval.set(val),
                 None => {

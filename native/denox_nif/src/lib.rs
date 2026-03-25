@@ -58,6 +58,39 @@ unsafe impl Sync for RuntimeResource {}
 
 impl rustler::Resource for RuntimeResource {}
 
+/// Granular permission fields (boxed to avoid large-variant penalty).
+#[derive(Deserialize, Debug)]
+struct GranularPermissions {
+    #[serde(default)]
+    allow_read: Option<PermValue>,
+    #[serde(default)]
+    allow_write: Option<PermValue>,
+    #[serde(default)]
+    allow_net: Option<PermValue>,
+    #[serde(default)]
+    allow_env: Option<PermValue>,
+    #[serde(default)]
+    allow_run: Option<PermValue>,
+    #[serde(default)]
+    allow_ffi: Option<PermValue>,
+    #[serde(default)]
+    allow_sys: Option<PermValue>,
+    #[serde(default)]
+    deny_read: Option<PermValue>,
+    #[serde(default)]
+    deny_write: Option<PermValue>,
+    #[serde(default)]
+    deny_net: Option<PermValue>,
+    #[serde(default)]
+    deny_env: Option<PermValue>,
+    #[serde(default)]
+    deny_run: Option<PermValue>,
+    #[serde(default)]
+    deny_ffi: Option<PermValue>,
+    #[serde(default)]
+    deny_sys: Option<PermValue>,
+}
+
 /// Permissions mode for the runtime, deserialized from JSON.
 #[derive(Deserialize, Debug)]
 #[serde(tag = "mode")]
@@ -68,38 +101,9 @@ enum PermissionsConfig {
     /// Deny everything (replaces old `sandbox: true`).
     #[serde(rename = "deny_all")]
     DenyAll,
-    /// Granular permissions.
+    /// Granular permissions (boxed to avoid large enum variant).
     #[serde(rename = "granular")]
-    Granular {
-        #[serde(default)]
-        allow_read: Option<PermValue>,
-        #[serde(default)]
-        allow_write: Option<PermValue>,
-        #[serde(default)]
-        allow_net: Option<PermValue>,
-        #[serde(default)]
-        allow_env: Option<PermValue>,
-        #[serde(default)]
-        allow_run: Option<PermValue>,
-        #[serde(default)]
-        allow_ffi: Option<PermValue>,
-        #[serde(default)]
-        allow_sys: Option<PermValue>,
-        #[serde(default)]
-        deny_read: Option<PermValue>,
-        #[serde(default)]
-        deny_write: Option<PermValue>,
-        #[serde(default)]
-        deny_net: Option<PermValue>,
-        #[serde(default)]
-        deny_env: Option<PermValue>,
-        #[serde(default)]
-        deny_run: Option<PermValue>,
-        #[serde(default)]
-        deny_ffi: Option<PermValue>,
-        #[serde(default)]
-        deny_sys: Option<PermValue>,
-    },
+    Granular(Box<GranularPermissions>),
 }
 
 /// A permission value: true means allow/deny all, list means specific values.
@@ -132,38 +136,23 @@ pub(crate) fn build_permissions(config: Option<&str>) -> Result<Permissions, Str
             Ok(Permissions::allow_all())
         }
         PermissionsConfig::DenyAll => Ok(Permissions::none_without_prompt()),
-        PermissionsConfig::Granular {
-            allow_read,
-            allow_write,
-            allow_net,
-            allow_env,
-            allow_run,
-            allow_ffi,
-            allow_sys,
-            deny_read,
-            deny_write,
-            deny_net,
-            deny_env,
-            deny_run,
-            deny_ffi,
-            deny_sys,
-        } => {
+        PermissionsConfig::Granular(g) => {
             let opts = deno_permissions::PermissionsOptions {
                 allow_all: false,
-                allow_read: perm_value_to_vec(&allow_read),
-                allow_write: perm_value_to_vec(&allow_write),
-                allow_net: perm_value_to_vec(&allow_net),
-                allow_env: perm_value_to_vec(&allow_env),
-                allow_run: perm_value_to_vec(&allow_run),
-                allow_ffi: perm_value_to_vec(&allow_ffi),
-                allow_sys: perm_value_to_vec(&allow_sys),
-                deny_read: perm_value_to_vec(&deny_read),
-                deny_write: perm_value_to_vec(&deny_write),
-                deny_net: perm_value_to_vec(&deny_net),
-                deny_env: perm_value_to_vec(&deny_env),
-                deny_run: perm_value_to_vec(&deny_run),
-                deny_ffi: perm_value_to_vec(&deny_ffi),
-                deny_sys: perm_value_to_vec(&deny_sys),
+                allow_read: perm_value_to_vec(&g.allow_read),
+                allow_write: perm_value_to_vec(&g.allow_write),
+                allow_net: perm_value_to_vec(&g.allow_net),
+                allow_env: perm_value_to_vec(&g.allow_env),
+                allow_run: perm_value_to_vec(&g.allow_run),
+                allow_ffi: perm_value_to_vec(&g.allow_ffi),
+                allow_sys: perm_value_to_vec(&g.allow_sys),
+                deny_read: perm_value_to_vec(&g.deny_read),
+                deny_write: perm_value_to_vec(&g.deny_write),
+                deny_net: perm_value_to_vec(&g.deny_net),
+                deny_env: perm_value_to_vec(&g.deny_env),
+                deny_run: perm_value_to_vec(&g.deny_run),
+                deny_ffi: perm_value_to_vec(&g.deny_ffi),
+                deny_sys: perm_value_to_vec(&g.deny_sys),
                 allow_import: None,
                 prompt: false,
             };
