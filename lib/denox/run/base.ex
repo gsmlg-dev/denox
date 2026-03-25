@@ -510,6 +510,7 @@ defmodule Denox.Run.Base do
       # --- Shared dispatch helpers ---
 
       @doc false
+      @spec dispatch_line(String.t(), t()) :: t()
       def dispatch_line(line, state) do
         :telemetry.execute(
           [:denox, :run, :recv],
@@ -534,6 +535,7 @@ defmodule Denox.Run.Base do
       end
 
       @doc false
+      @spec handle_exit(non_neg_integer(), t()) :: t()
       def handle_exit(status, state) do
         state = %{state | exit_status: status}
 
