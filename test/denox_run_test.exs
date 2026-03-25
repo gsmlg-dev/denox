@@ -1158,15 +1158,15 @@ defmodule DenoxRunTest do
     test "long lines are handled correctly", %{tmp_dir: dir} do
       script =
         write_script(dir, "long_line.ts", """
-        const long = "x".repeat(10000);
+        const long = "x".repeat(10_000);
         console.log(long);
         """)
 
       {:ok, pid} = Denox.Run.start_link(file: script, permissions: :all)
 
       {:ok, line} = Denox.Run.recv(pid, timeout: 10_000)
-      assert String.length(line) == 10000
-      assert line == String.duplicate("x", 10000)
+      assert String.length(line) == 10_000
+      assert line == String.duplicate("x", 10_000)
     end
 
     test "rapid successive output is buffered correctly", %{tmp_dir: dir} do
