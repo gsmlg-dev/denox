@@ -335,13 +335,8 @@ pub fn runtime_run_recv(
 
     match rx.recv_timeout(std::time::Duration::from_secs(1)) {
         Ok(line) => Ok(Some(line)),
-        Err(mpsc::RecvTimeoutError::Timeout) => Ok(None),
-        Err(mpsc::RecvTimeoutError::Disconnected) => {
-            if resource.alive.load(std::sync::atomic::Ordering::SeqCst) {
-                Ok(None)
-            } else {
-                Ok(None) // Runtime has stopped
-            }
+        Err(mpsc::RecvTimeoutError::Timeout) | Err(mpsc::RecvTimeoutError::Disconnected) => {
+            Ok(None)
         }
     }
 }
