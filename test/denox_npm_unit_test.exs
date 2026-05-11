@@ -47,6 +47,20 @@ defmodule DenoxNpmUnitTest do
     end
   end
 
+  describe "bundle/3 — mkdir failure" do
+    @describetag :deno
+    test "returns readable error when output directory cannot be created", %{tmp_dir: dir} do
+      entry = Path.join(dir, "entry.ts")
+      File.write!(entry, "export const x = 1;")
+
+      # /proc is read-only on Linux, so mkdir_p fails with :eacces
+      result = Denox.Npm.bundle("file://#{entry}", "/proc/denox_test/out.js")
+      assert {:error, msg} = result
+      assert is_binary(msg)
+      assert msg =~ "Failed to create directory"
+    end
+  end
+
   describe "bundle/3 — with local file specifier" do
     @describetag :deno
     test "returns :ok when bundling a local TS file", %{tmp_dir: dir} do
