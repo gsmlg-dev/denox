@@ -22,6 +22,9 @@ defmodule Denox.StaticNifReleaseTest do
     assert release_yml =~ "build_static_nif"
     assert release_yml =~ "x86_64-unknown-linux-musl"
     assert release_yml =~ "aarch64-unknown-linux-musl"
+    assert release_yml =~ "ubuntu-22.04-arm"
+    assert release_yml =~ ~s(V8_FROM_SOURCE: "1")
+    assert release_yml =~ "libglib2.0-dev"
     assert release_yml =~ "libdenox_nif.a"
     assert release_yml =~ "static-nif-"
   end
