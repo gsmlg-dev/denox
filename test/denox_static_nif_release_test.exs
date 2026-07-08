@@ -26,13 +26,11 @@ defmodule Denox.StaticNifReleaseTest do
     assert release_yml =~ "aarch64-unknown-linux-musl"
     assert release_yml =~ "ubuntu-22.04-arm"
     assert release_yml =~ ~s(V8_FROM_SOURCE: "1")
-    assert release_yml =~ "clang"
-    assert release_yml =~ "lld"
-    assert release_yml =~ "libclang-rt-${clang_major}-dev"
-    assert release_yml =~ "clang --print-resource-dir"
-    assert release_yml =~ "CLANG_BASE_PATH=$clang_base_path"
-    assert release_yml =~ "libclang_rt.builtins"
-    assert release_yml =~ "x86_64-unknown-linux-gnu"
+    assert release_yml =~ ~s(DISABLE_CLANG: "1")
+    assert release_yml =~ "g++"
+    refute release_yml =~ "libclang-rt-${clang_major}-dev"
+    refute release_yml =~ "CLANG_BASE_PATH="
+    refute release_yml =~ "libclang_rt.builtins"
     assert release_yml =~ "generate-ninja"
     assert release_yml =~ "ninja-build"
     assert release_yml =~ "GN=$(command -v gn)"

@@ -126,58 +126,12 @@ jobs:
         run: |
           set -euo pipefail
           sudo apt-get update
-          sudo apt-get install -y clang-15 curl generate-ninja libglib2.0-dev lld-15 musl-tools ninja-build pkg-config python3
-
-          clang_major="$(/usr/lib/llvm-15/bin/clang --version | sed -n 's/.*version \([0-9][0-9]*\).*/\1/p' | head -1)"
-          if [ -z "$clang_major" ]; then
-            echo "Unable to determine clang major version" >&2
-            exit 1
-          fi
-          sudo apt-get install -y "libclang-rt-${clang_major}-dev"
+          sudo apt-get install -y curl g++ generate-ninja libglib2.0-dev musl-tools ninja-build pkg-config python3
 
       - name: Configure V8 source build inputs
         working-directory: native/denox_nif
         run: |
           set -euo pipefail
-          clang_base_path="/usr/lib/llvm-15"
-          echo "$clang_base_path/bin" >> "$GITHUB_PATH"
-          export PATH="$clang_base_path/bin:$PATH"
-
-          if [ ! -x "$clang_base_path/bin/clang" ]; then
-            echo "Unable to locate clang at $clang_base_path/bin/clang" >&2
-            exit 1
-          fi
-
-          clang_resource_dir="$(clang --print-resource-dir)"
-          case "$(uname -m)" in
-            x86_64)
-              builtins_arch="x86_64"
-              builtins_target="x86_64-unknown-linux-gnu"
-              ;;
-            aarch64 | arm64)
-              builtins_arch="aarch64"
-              builtins_target="aarch64-unknown-linux-gnu"
-              ;;
-            *)
-              echo "Unsupported static NIF runner architecture: $(uname -m)" >&2
-              exit 1
-              ;;
-          esac
-
-          builtins_src="$clang_resource_dir/lib/linux/libclang_rt.builtins-${builtins_arch}.a"
-          if [ ! -f "$builtins_src" ]; then
-            builtins_src="$(find "$clang_resource_dir/lib" -name "libclang_rt.builtins-${builtins_arch}.a" -print -quit)"
-          fi
-
-          if [ -z "$builtins_src" ] || [ ! -f "$builtins_src" ]; then
-            echo "Unable to locate compiler-rt builtins for $builtins_arch under $clang_resource_dir" >&2
-            exit 1
-          fi
-
-          sudo mkdir -p "$clang_resource_dir/lib/$builtins_target"
-          sudo ln -sf "$builtins_src" "$clang_resource_dir/lib/$builtins_target/libclang_rt.builtins.a"
-
-          echo "CLANG_BASE_PATH=$clang_base_path" >> "$GITHUB_ENV"
           echo "GN=$(command -v gn)" >> "$GITHUB_ENV"
           echo "NINJA=$(command -v ninja)" >> "$GITHUB_ENV"
 
@@ -199,6 +153,7 @@ jobs:
           NIF_VERSION: ${{ matrix.nif }}
           TARGET: ${{ matrix.job.target }}
           VERSION: ${{ inputs.version }}
+          DISABLE_CLANG: "1"
           V8_FROM_SOURCE: "1"
         run: |
           set -euo pipefail
