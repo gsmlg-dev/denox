@@ -751,6 +751,22 @@ fn panic_message(panic_val: &Box<dyn std::any::Any + Send>) -> String {
     }
 }
 
+#[cfg(target_family = "unix")]
+mod static_nif_export {
+    extern "C" {
+        fn nif_init() -> *const rustler::codegen_runtime::DEF_NIF_ENTRY;
+    }
+
+    /// OTP static NIF linking looks for `<libname>_nif_init`.
+    ///
+    /// Denox publishes the archive as `libdenox_nif.a`, so downstream static
+    /// OTP builds pass `--enable-static-nifs=/path/to/libdenox_nif.a:denox_nif`.
+    #[no_mangle]
+    pub extern "C" fn denox_nif_nif_init() -> *const rustler::codegen_runtime::DEF_NIF_ENTRY {
+        unsafe { nif_init() }
+    }
+}
+
 rustler::init!("Elixir.Denox.Native", load = on_load);
 
 fn on_load(env: Env, _info: Term) -> bool {

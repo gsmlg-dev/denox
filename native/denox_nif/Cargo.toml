@@ -5,7 +5,7 @@ edition = "2021"
 
 [lib]
 name = "denox_nif"
-crate-type = ["cdylib"]
+crate-type = ["cdylib", "staticlib"]
 
 [dependencies]
 rustler = "0.36"
