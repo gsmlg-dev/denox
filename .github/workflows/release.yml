@@ -125,12 +125,13 @@ jobs:
       - name: Install static build dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y curl generate-ninja libglib2.0-dev musl-tools ninja-build pkg-config python3
+          sudo apt-get install -y clang curl generate-ninja libglib2.0-dev lld musl-tools ninja-build pkg-config python3
 
       - name: Configure V8 source build inputs
         working-directory: native/denox_nif
         run: |
           set -euo pipefail
+          echo "CLANG_BASE_PATH=/usr" >> "$GITHUB_ENV"
           echo "GN=$(command -v gn)" >> "$GITHUB_ENV"
           echo "NINJA=$(command -v ninja)" >> "$GITHUB_ENV"
 

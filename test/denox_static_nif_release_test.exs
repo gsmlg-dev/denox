@@ -26,6 +26,9 @@ defmodule Denox.StaticNifReleaseTest do
     assert release_yml =~ "aarch64-unknown-linux-musl"
     assert release_yml =~ "ubuntu-22.04-arm"
     assert release_yml =~ ~s(V8_FROM_SOURCE: "1")
+    assert release_yml =~ "clang"
+    assert release_yml =~ "lld"
+    assert release_yml =~ "CLANG_BASE_PATH=/usr"
     assert release_yml =~ "generate-ninja"
     assert release_yml =~ "ninja-build"
     assert release_yml =~ "GN=$(command -v gn)"
