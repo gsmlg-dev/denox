@@ -100,9 +100,77 @@ jobs:
           name: nif-${{ matrix.job.target }}-nif${{ matrix.nif }}
           path: ${{ steps.build.outputs.file-path }}
 
+  build_static_nif:
+    name: Static NIF ${{ matrix.nif }} - ${{ matrix.job.target }}
+    needs: prepare
+    runs-on: ubuntu-22.04
+    strategy:
+      fail-fast: false
+      matrix:
+        nif: ["2.17"]
+        job:
+          - { target: x86_64-unknown-linux-musl }
+          - { target: aarch64-unknown-linux-musl, cross: true }
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.prepare.outputs.commit_sha }}
+
+      - name: Install Rust target
+        if: matrix.job.cross != true
+        run: rustup target add ${{ matrix.job.target }}
+
+      - name: Install musl tools
+        if: matrix.job.cross != true
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y musl-tools
+
+      - name: Install cross
+        if: matrix.job.cross == true
+        run: cargo install cross --locked
+
+      - name: Build static NIF archive
+        working-directory: native/denox_nif
+        env:
+          NIF_VERSION: ${{ matrix.nif }}
+          TARGET: ${{ matrix.job.target }}
+          VERSION: ${{ inputs.version }}
+          USE_CROSS: ${{ matrix.job.cross || 'false' }}
+        run: |
+          set -euo pipefail
+          feature="nif_version_${NIF_VERSION//./_}"
+          if [ "$USE_CROSS" = "true" ]; then
+            cross build --release --target "$TARGET" --features "$feature"
+          else
+            cargo build --release --target "$TARGET" --features "$feature"
+          fi
+
+          archive_dir="../../static-nifs/denox_nif-v${VERSION}-nif-${NIF_VERSION}-${TARGET}-static"
+          mkdir -p "$archive_dir"
+          cp "target/${TARGET}/release/libdenox_nif.a" "$archive_dir/libdenox_nif.a"
+          tar -C "$archive_dir" -czf "${archive_dir}.tar.gz" libdenox_nif.a
+
+      - name: Verify static NIF symbol
+        env:
+          NIF_VERSION: ${{ matrix.nif }}
+          TARGET: ${{ matrix.job.target }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          nm -g "static-nifs/denox_nif-v${VERSION}-nif-${NIF_VERSION}-${TARGET}-static/libdenox_nif.a" \
+            | grep 'denox_nif_nif_init'
+
+      - name: Upload static NIF artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: static-nif-${{ matrix.job.target }}-nif${{ matrix.nif }}
+          path: static-nifs/*.tar.gz
+
   create_release:
     name: Create GitHub Release
-    needs: [prepare, build_release]
+    needs: [prepare, build_release, build_static_nif]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -167,6 +235,13 @@ jobs:
         with:
           path: artifacts
           pattern: nif-*
+          merge-multiple: true
+
+      - name: Download all static NIF artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          pattern: static-nif-*
           merge-multiple: true
 
       - name: Create GitHub Release

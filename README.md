@@ -52,6 +52,35 @@ To force a local build (instead of using precompiled binaries):
 DENOX_BUILD=true mix compile
 ```
 
+### Static OTP NIF linking
+
+Denox releases include Linux/musl static NIF archives for:
+
+- `x86_64-unknown-linux-musl`
+- `aarch64-unknown-linux-musl`
+
+Each static release artifact is named like
+`denox_nif-vVERSION-nif-2.17-TARGET-static.tar.gz` and contains
+`libdenox_nif.a`.
+
+When building OTP with static NIFs, pass the archive and Denox static NIF
+library name:
+
+```bash
+./configure --enable-static-nifs=/path/to/libdenox_nif.a:denox_nif
+```
+
+The archive exports `denox_nif_nif_init`, which delegates to Rustler's
+generated `nif_init` entrypoint for `Elixir.Denox.Native`.
+
+After linking Denox into the static OTP build, run this smoke check in an
+application that depends on Denox:
+
+```elixir
+{:ok, rt} = Denox.runtime()
+{:ok, "3"} = Denox.eval(rt, "1 + 2")
+```
+
 ## Quick Start
 
 ```elixir
