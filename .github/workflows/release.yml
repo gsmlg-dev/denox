@@ -154,6 +154,7 @@ jobs:
           TARGET: ${{ matrix.job.target }}
           VERSION: ${{ inputs.version }}
           DISABLE_CLANG: "1"
+          GN_ARGS: "use_custom_libcxx=false"
           V8_FROM_SOURCE: "1"
         run: |
           set -euo pipefail
