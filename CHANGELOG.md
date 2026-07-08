@@ -1,4 +1,12 @@
-## v0.6.0 (latest)
+## v0.7.0
+
+### Changes
+
+- fix: return readable mkdir errors
+- fix: return readable error strings from add_to_config/remove_from_config write failures
+- fix: replace flaky Application.stop(:inets) with safe zero-redirects test
+- fix: set MIX_ENV=test for E2E workflow (#2)
+
 
 ### Changes (since previous release)
 
