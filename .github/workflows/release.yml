@@ -35,14 +35,16 @@ jobs:
         run: sed -i 's/@version ".*"/@version "${{ inputs.version }}"/' mix.exs
 
       - name: Update version in Cargo.toml
-        run: sed -i 's/^version = ".*"/version = "${{ inputs.version }}"/' native/denox_nif/Cargo.toml
+        run: |
+          sed -i 's/^version = ".*"/version = "${{ inputs.version }}"/' native/denox_nif/Cargo.toml
+          cargo generate-lockfile --manifest-path native/denox_nif/Cargo.toml
 
       - name: Commit version bump
         id: commit
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add mix.exs native/denox_nif/Cargo.toml
+          git add mix.exs native/denox_nif/Cargo.toml native/denox_nif/Cargo.lock
           if git diff --cached --quiet; then
             echo "Version already at ${{ inputs.version }}, no commit needed"
           else
@@ -123,7 +125,26 @@ jobs:
       - name: Install static build dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y curl libglib2.0-dev musl-tools pkg-config python3
+          sudo apt-get install -y curl generate-ninja libglib2.0-dev musl-tools ninja-build pkg-config python3
+
+      - name: Configure V8 source build inputs
+        working-directory: native/denox_nif
+        run: |
+          set -euo pipefail
+          echo "GN=$(command -v gn)" >> "$GITHUB_ENV"
+          echo "NINJA=$(command -v ninja)" >> "$GITHUB_ENV"
+
+          cargo fetch
+          v8_dir="$(find "$HOME/.cargo/registry/src" -type d -name 'v8-*' -print -quit)"
+          icu_data="$(find "$HOME/.cargo/registry/src" -type f -path '*/deno_core_icudata-*/src/icudtl.dat' -print -quit)"
+
+          if [ -z "$v8_dir" ] || [ -z "$icu_data" ]; then
+            echo "Unable to locate rusty_v8 source or deno_core ICU data" >&2
+            exit 1
+          fi
+
+          mkdir -p "$v8_dir/third_party/icu/common"
+          cp "$icu_data" "$v8_dir/third_party/icu/common/icudtl.dat"
 
       - name: Build static NIF archive
         working-directory: native/denox_nif
