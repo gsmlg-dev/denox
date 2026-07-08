@@ -145,8 +145,22 @@ jobs:
         run: |
           set -euo pipefail
           musl_uapi="$RUNNER_TEMP/musl-uapi/include"
-          mkdir -p "$musl_uapi/linux"
-          cp /usr/include/linux/limits.h "$musl_uapi/linux/limits.h"
+          multiarch="$(gcc -print-multiarch)"
+
+          mkdir -p "$musl_uapi"
+          cp -a /usr/include/linux "$musl_uapi/linux"
+          cp -a /usr/include/asm-generic "$musl_uapi/asm-generic"
+
+          if [ ! -d "/usr/include/${multiarch}/asm" ]; then
+            echo "Unable to locate Linux UAPI asm headers for ${multiarch}" >&2
+            exit 1
+          fi
+
+          cp -a "/usr/include/${multiarch}/asm" "$musl_uapi/asm"
+          test -f "$musl_uapi/linux/limits.h"
+          test -f "$musl_uapi/linux/types.h"
+          test -d "$musl_uapi/asm"
+          test -d "$musl_uapi/asm-generic"
           echo "CFLAGS=-isystem $musl_uapi" >> "$GITHUB_ENV"
 
       - name: Configure V8 source build inputs
