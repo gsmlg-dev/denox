@@ -29,6 +29,9 @@ defmodule Denox.StaticNifReleaseTest do
     assert release_yml =~ ~s(DISABLE_CLANG: "1")
     assert release_yml =~ ~s(GN_ARGS: "use_custom_libcxx=false treat_warnings_as_errors=false")
     assert release_yml =~ "g++"
+    assert release_yml =~ "linux-libc-dev"
+    assert release_yml =~ "linux/limits.h"
+    assert release_yml =~ "CFLAGS=-isystem"
     refute release_yml =~ "libclang-rt-${clang_major}-dev"
     refute release_yml =~ "CLANG_BASE_PATH="
     refute release_yml =~ "libclang_rt.builtins"
