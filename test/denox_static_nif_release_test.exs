@@ -19,11 +19,19 @@ defmodule Denox.StaticNifReleaseTest do
   test "release workflow publishes Linux musl static NIF archives" do
     release_yml = File.read!(Path.join(@repo_root, ".github/workflows/release.yml"))
 
+    assert release_yml =~ "cargo generate-lockfile --manifest-path native/denox_nif/Cargo.toml"
+    assert release_yml =~ "native/denox_nif/Cargo.lock"
     assert release_yml =~ "build_static_nif"
     assert release_yml =~ "x86_64-unknown-linux-musl"
     assert release_yml =~ "aarch64-unknown-linux-musl"
     assert release_yml =~ "ubuntu-22.04-arm"
     assert release_yml =~ ~s(V8_FROM_SOURCE: "1")
+    assert release_yml =~ "generate-ninja"
+    assert release_yml =~ "ninja-build"
+    assert release_yml =~ "GN=$(command -v gn)"
+    assert release_yml =~ "NINJA=$(command -v ninja)"
+    assert release_yml =~ "deno_core_icudata-"
+    assert release_yml =~ "third_party/icu/common/icudtl.dat"
     assert release_yml =~ "libglib2.0-dev"
     assert release_yml =~ "libdenox_nif.a"
     assert release_yml =~ "static-nif-"
