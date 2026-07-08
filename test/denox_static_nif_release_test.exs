@@ -24,6 +24,8 @@ defmodule Denox.StaticNifReleaseTest do
     assert release_yml =~ "build_static_nif"
     assert release_yml =~ "x86_64-unknown-linux-musl"
     assert release_yml =~ "aarch64-unknown-linux-musl"
+    assert release_yml =~ "for attempt in 1 2 3"
+    assert release_yml =~ "mix deps.get failed on attempt"
     assert release_yml =~ "ubuntu-22.04-arm"
     assert release_yml =~ ~s(V8_FROM_SOURCE: "1")
     assert release_yml =~ ~s(DISABLE_CLANG: "1")

@@ -83,7 +83,20 @@ jobs:
         run: rustup target add x86_64-apple-darwin
 
       - name: Install Elixir dependencies
-        run: mix deps.get
+        run: |
+          set -euo pipefail
+          for attempt in 1 2 3; do
+            if mix deps.get; then
+              break
+            fi
+
+            echo "mix deps.get failed on attempt ${attempt}" >&2
+            if [ "$attempt" -eq 3 ]; then
+              exit 1
+            fi
+
+            sleep $((attempt * 10))
+          done
 
       - name: Build precompiled NIF
         id: build
