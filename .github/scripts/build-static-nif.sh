@@ -53,6 +53,13 @@ fi
 
 export LIBCLANG_PATH=/usr/lib
 
+# Bindgen loads libclang with dlopen; musl build scripts with crt-static cannot.
+if [ -n "${RUSTFLAGS:-}" ]; then
+  export RUSTFLAGS="${RUSTFLAGS} -C target-feature=-crt-static"
+else
+  export RUSTFLAGS="-C target-feature=-crt-static"
+fi
+
 if [ "${TARGET}" = "aarch64-unknown-linux-musl" ]; then
   ln -sf "$(command -v gcc)" /usr/local/bin/aarch64-linux-gnu-gcc
   ln -sf "$(command -v g++)" /usr/local/bin/aarch64-linux-gnu-g++
