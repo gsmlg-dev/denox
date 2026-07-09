@@ -29,26 +29,54 @@ defmodule Denox.StaticNifReleaseTest do
     assert release_yml =~ "ubuntu-22.04-arm"
     assert release_yml =~ ~s(V8_FROM_SOURCE: "1")
     assert release_yml =~ ~s(DISABLE_CLANG: "1")
-    assert release_yml =~ ~s(GN_ARGS: "use_custom_libcxx=false treat_warnings_as_errors=false")
-    assert release_yml =~ "g++"
-    assert release_yml =~ "linux-libc-dev"
-    assert release_yml =~ "linux/limits.h"
-    assert release_yml =~ "linux/types.h"
-    assert release_yml =~ "asm-generic"
-    assert release_yml =~ "gcc -print-multiarch"
-    assert release_yml =~ "CFLAGS=-isystem"
+
+    assert release_yml =~
+             ~s(GN_ARGS: "use_custom_libcxx=false treat_warnings_as_errors=false v8_enable_gdbjit=false")
+
+    assert release_yml =~ ~s(EXTRA_GN_ARGS: "use_sysroot=false")
+    assert release_yml =~ "docker run --rm"
+    assert release_yml =~ "alpine:3.22"
+    assert release_yml =~ ".github/scripts/build-static-nif.sh"
     refute release_yml =~ "libclang-rt-${clang_major}-dev"
     refute release_yml =~ "CLANG_BASE_PATH="
     refute release_yml =~ "libclang_rt.builtins"
-    assert release_yml =~ "generate-ninja"
-    assert release_yml =~ "ninja-build"
-    assert release_yml =~ "GN=$(command -v gn)"
-    assert release_yml =~ "NINJA=$(command -v ninja)"
-    assert release_yml =~ "deno_core_icudata-"
-    assert release_yml =~ "third_party/icu/common/icudtl.dat"
-    assert release_yml =~ "libglib2.0-dev"
     assert release_yml =~ "libdenox_nif.a"
     assert release_yml =~ "static-nif-"
+  end
+
+  test "release workflow builds and verifies static archives against musl link hazards" do
+    release_yml = File.read!(Path.join(@repo_root, ".github/workflows/release.yml"))
+    build_script = File.read!(Path.join(@repo_root, ".github/scripts/build-static-nif.sh"))
+
+    assert release_yml =~ "docker run --rm"
+    assert release_yml =~ "alpine:3.22"
+    assert build_script =~ "apk add --no-cache"
+    assert build_script =~ "build-base"
+    assert build_script =~ "glib-dev"
+    assert build_script =~ "linux-headers"
+    assert build_script =~ "gn"
+    assert build_script =~ "ninja"
+    assert build_script =~ "pkgconf"
+    assert build_script =~ "rust"
+    assert build_script =~ "cargo"
+    assert build_script =~ ~s(rustc -vV | grep "host: ${TARGET}")
+    assert build_script =~ "aarch64-linux-gnu-g++"
+    assert build_script =~ "deno_core_icudata-"
+    assert build_script =~ "third_party/icu/common/icudtl.dat"
+    assert build_script =~ "objcopy"
+    assert build_script =~ "__jit_debug_register_code"
+    assert build_script =~ "__jit_debug_descriptor"
+
+    assert release_yml =~ "nm -A -u"
+    assert release_yml =~ "__libc_single_threaded"
+    assert release_yml =~ "__memcpy_chk"
+    assert release_yml =~ "mmap64"
+    assert release_yml =~ "fopen64"
+    assert release_yml =~ "backtrace_symbols"
+
+    assert release_yml =~ "nm -A -g --defined-only"
+    assert release_yml =~ "__jit_debug_register_code"
+    assert release_yml =~ "__jit_debug_descriptor"
   end
 
   test "README documents static OTP linking inputs" do

@@ -132,84 +132,52 @@ jobs:
         with:
           ref: ${{ needs.prepare.outputs.commit_sha }}
 
-      - name: Install Rust target
-        run: rustup target add ${{ matrix.job.target }}
-
-      - name: Install static build dependencies
-        run: |
-          set -euo pipefail
-          sudo apt-get update
-          sudo apt-get install -y curl g++ generate-ninja libglib2.0-dev linux-libc-dev musl-tools ninja-build pkg-config python3
-
-      - name: Configure musl Linux UAPI headers
-        run: |
-          set -euo pipefail
-          musl_uapi="$RUNNER_TEMP/musl-uapi/include"
-          multiarch="$(gcc -print-multiarch)"
-
-          mkdir -p "$musl_uapi"
-          cp -a /usr/include/linux "$musl_uapi/linux"
-          cp -a /usr/include/asm-generic "$musl_uapi/asm-generic"
-
-          if [ ! -d "/usr/include/${multiarch}/asm" ]; then
-            echo "Unable to locate Linux UAPI asm headers for ${multiarch}" >&2
-            exit 1
-          fi
-
-          cp -a "/usr/include/${multiarch}/asm" "$musl_uapi/asm"
-          test -f "$musl_uapi/linux/limits.h"
-          test -f "$musl_uapi/linux/types.h"
-          test -d "$musl_uapi/asm"
-          test -d "$musl_uapi/asm-generic"
-          echo "CFLAGS=-isystem $musl_uapi" >> "$GITHUB_ENV"
-
-      - name: Configure V8 source build inputs
-        working-directory: native/denox_nif
-        run: |
-          set -euo pipefail
-          echo "GN=$(command -v gn)" >> "$GITHUB_ENV"
-          echo "NINJA=$(command -v ninja)" >> "$GITHUB_ENV"
-
-          cargo fetch
-          v8_dir="$(find "$HOME/.cargo/registry/src" -type d -name 'v8-*' -print -quit)"
-          icu_data="$(find "$HOME/.cargo/registry/src" -type f -path '*/deno_core_icudata-*/src/icudtl.dat' -print -quit)"
-
-          if [ -z "$v8_dir" ] || [ -z "$icu_data" ]; then
-            echo "Unable to locate rusty_v8 source or deno_core ICU data" >&2
-            exit 1
-          fi
-
-          mkdir -p "$v8_dir/third_party/icu/common"
-          cp "$icu_data" "$v8_dir/third_party/icu/common/icudtl.dat"
-
-      - name: Build static NIF archive
-        working-directory: native/denox_nif
+      - name: Build static NIF archive in Alpine/musl
         env:
           NIF_VERSION: ${{ matrix.nif }}
           TARGET: ${{ matrix.job.target }}
           VERSION: ${{ inputs.version }}
           DISABLE_CLANG: "1"
-          GN_ARGS: "use_custom_libcxx=false treat_warnings_as_errors=false"
+          GN_ARGS: "use_custom_libcxx=false treat_warnings_as_errors=false v8_enable_gdbjit=false"
+          EXTRA_GN_ARGS: "use_sysroot=false"
           V8_FROM_SOURCE: "1"
         run: |
           set -euo pipefail
-          feature="nif_version_${NIF_VERSION//./_}"
-          cargo build --release --target "$TARGET" --features "$feature"
+          docker run --rm \
+            -e NIF_VERSION \
+            -e TARGET \
+            -e VERSION \
+            -e DISABLE_CLANG \
+            -e GN_ARGS \
+            -e EXTRA_GN_ARGS \
+            -e V8_FROM_SOURCE \
+            -v "$GITHUB_WORKSPACE:/work" \
+            -w /work/native/denox_nif \
+            alpine:3.22 \
+            /bin/sh /work/.github/scripts/build-static-nif.sh
 
-          archive_dir="../../static-nifs/denox_nif-v${VERSION}-nif-${NIF_VERSION}-${TARGET}-static"
-          mkdir -p "$archive_dir"
-          cp "target/${TARGET}/release/libdenox_nif.a" "$archive_dir/libdenox_nif.a"
-          tar -C "$archive_dir" -czf "${archive_dir}.tar.gz" libdenox_nif.a
-
-      - name: Verify static NIF symbol
+      - name: Verify static NIF archive
         env:
           NIF_VERSION: ${{ matrix.nif }}
           TARGET: ${{ matrix.job.target }}
           VERSION: ${{ inputs.version }}
         run: |
           set -euo pipefail
-          nm -g "static-nifs/denox_nif-v${VERSION}-nif-${NIF_VERSION}-${TARGET}-static/libdenox_nif.a" \
-            | grep 'denox_nif_nif_init'
+          archive="static-nifs/denox_nif-v${VERSION}-nif-${NIF_VERSION}-${TARGET}-static/libdenox_nif.a"
+
+          nm -g "$archive" | grep 'denox_nif_nif_init'
+
+          forbidden_undefined='(^|[[:space:]])U (__fprintf_chk|__libc_single_threaded|__memcpy_chk|__memmove_chk|__printf_chk|__realpath_chk|__snprintf_chk|__stpcpy_chk|__strcpy_chk|__strncpy_chk|__vfprintf_chk|__vsnprintf_chk|mmap64|ftruncate64|mkstemp64|stat64|fopen64|fstat64|tmpfile64|backtrace|backtrace_symbols)$'
+          if nm -A -u "$archive" | grep -E "$forbidden_undefined"; then
+            echo "Static NIF archive contains glibc-only undefined symbols" >&2
+            exit 1
+          fi
+
+          forbidden_defined='(^|[[:space:]])[A-Z] (__jit_debug_register_code|__jit_debug_descriptor)$'
+          if nm -A -g --defined-only "$archive" | grep -E "$forbidden_defined"; then
+            echo "Static NIF archive exports symbols that conflict with OTP JIT" >&2
+            exit 1
+          fi
 
       - name: Upload static NIF artifact
         uses: actions/upload-artifact@v4
