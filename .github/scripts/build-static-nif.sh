@@ -24,7 +24,24 @@ apk add --no-cache \
   tar
 
 rustc -vV
-rustc -vV | grep "host: ${TARGET}"
+rust_host="$(rustc -vV | awk '/^host: / {print $2}')"
+case "${TARGET}" in
+  x86_64-unknown-linux-musl) target_arch="x86_64" ;;
+  aarch64-unknown-linux-musl) target_arch="aarch64" ;;
+  *)
+    echo "Unsupported static NIF target: ${TARGET}" >&2
+    exit 1
+    ;;
+esac
+
+case "${rust_host}" in
+  "${target_arch}"-*-linux-musl) ;;
+  *)
+    echo "Rust host ${rust_host} does not match musl target ${TARGET}" >&2
+    exit 1
+    ;;
+esac
+
 cargo --version
 gn --version
 ninja --version
@@ -51,11 +68,11 @@ mkdir -p "${v8_dir}/third_party/icu/common"
 cp "${icu_data}" "${v8_dir}/third_party/icu/common/icudtl.dat"
 
 feature="nif_version_$(printf '%s' "${NIF_VERSION}" | tr '.' '_')"
-cargo build --release --target "${TARGET}" --features "${feature}"
+cargo build --release --features "${feature}"
 
 archive_dir="../../static-nifs/denox_nif-v${VERSION}-nif-${NIF_VERSION}-${TARGET}-static"
 mkdir -p "${archive_dir}"
-cp "target/${TARGET}/release/libdenox_nif.a" "${archive_dir}/libdenox_nif.a"
+cp "target/release/libdenox_nif.a" "${archive_dir}/libdenox_nif.a"
 objcopy \
   --localize-symbol=__jit_debug_register_code \
   --localize-symbol=__jit_debug_descriptor \
