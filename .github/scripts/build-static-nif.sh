@@ -11,7 +11,6 @@ fi
 apk add --no-cache \
   binutils \
   build-base \
-  cargo \
   curl \
   git \
   glib-dev \
@@ -20,7 +19,6 @@ apk add --no-cache \
   ninja \
   pkgconf \
   python3 \
-  rust \
   tar
 
 rustc -vV

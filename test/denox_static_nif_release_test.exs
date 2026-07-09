@@ -35,7 +35,7 @@ defmodule Denox.StaticNifReleaseTest do
 
     assert release_yml =~ ~s(EXTRA_GN_ARGS: "use_sysroot=false")
     assert release_yml =~ "docker run --rm"
-    assert release_yml =~ "alpine:3.22"
+    assert release_yml =~ "rust:1.88-alpine3.22"
     assert release_yml =~ ".github/scripts/build-static-nif.sh"
     refute release_yml =~ "libclang-rt-${clang_major}-dev"
     refute release_yml =~ "CLANG_BASE_PATH="
@@ -49,7 +49,7 @@ defmodule Denox.StaticNifReleaseTest do
     build_script = File.read!(Path.join(@repo_root, ".github/scripts/build-static-nif.sh"))
 
     assert release_yml =~ "docker run --rm"
-    assert release_yml =~ "alpine:3.22"
+    assert release_yml =~ "rust:1.88-alpine3.22"
     assert build_script =~ "apk add --no-cache"
     assert build_script =~ "build-base"
     assert build_script =~ "glib-dev"
@@ -57,8 +57,10 @@ defmodule Denox.StaticNifReleaseTest do
     assert build_script =~ "gn"
     assert build_script =~ "ninja"
     assert build_script =~ "pkgconf"
-    assert build_script =~ "rust"
-    assert build_script =~ "cargo"
+    refute build_script =~ ~r/\n  rust \\\n/
+    refute build_script =~ ~r/\n  cargo \\\n/
+    assert build_script =~ "rustc -vV"
+    assert build_script =~ "cargo --version"
     assert build_script =~ "rust_host=\"$(rustc -vV | awk '/^host: / {print $2}')\""
     assert build_script =~ "x86_64-unknown-linux-musl) target_arch=\"x86_64\" ;;"
     assert build_script =~ "aarch64-unknown-linux-musl) target_arch=\"aarch64\" ;;"
