@@ -11,6 +11,7 @@ fi
 apk add --no-cache \
   binutils \
   build-base \
+  clang20-dev \
   curl \
   git \
   glib-dev \
@@ -44,6 +45,13 @@ cargo --version
 gn --version
 ninja --version
 pkg-config --modversion glib-2.0
+
+if [ ! -e /usr/lib/libclang.so ]; then
+  echo "Unable to locate /usr/lib/libclang.so for bindgen" >&2
+  exit 1
+fi
+
+export LIBCLANG_PATH=/usr/lib
 
 if [ "${TARGET}" = "aarch64-unknown-linux-musl" ]; then
   ln -sf "$(command -v gcc)" /usr/local/bin/aarch64-linux-gnu-gcc

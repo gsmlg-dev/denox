@@ -52,6 +52,7 @@ defmodule Denox.StaticNifReleaseTest do
     assert release_yml =~ "rust:1.88-alpine3.22"
     assert build_script =~ "apk add --no-cache"
     assert build_script =~ "build-base"
+    assert build_script =~ "clang20-dev"
     assert build_script =~ "glib-dev"
     assert build_script =~ "linux-headers"
     assert build_script =~ "gn"
@@ -61,6 +62,8 @@ defmodule Denox.StaticNifReleaseTest do
     refute build_script =~ ~r/\n  cargo \\\n/
     assert build_script =~ "rustc -vV"
     assert build_script =~ "cargo --version"
+    assert build_script =~ "Unable to locate /usr/lib/libclang.so for bindgen"
+    assert build_script =~ "export LIBCLANG_PATH=/usr/lib"
     assert build_script =~ "rust_host=\"$(rustc -vV | awk '/^host: / {print $2}')\""
     assert build_script =~ "x86_64-unknown-linux-musl) target_arch=\"x86_64\" ;;"
     assert build_script =~ "aarch64-unknown-linux-musl) target_arch=\"aarch64\" ;;"
