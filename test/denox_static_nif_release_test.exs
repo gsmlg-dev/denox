@@ -64,6 +64,8 @@ defmodule Denox.StaticNifReleaseTest do
     assert build_script =~ "cargo --version"
     assert build_script =~ "Unable to locate /usr/lib/libclang.so for bindgen"
     assert build_script =~ "export LIBCLANG_PATH=/usr/lib"
+    assert build_script =~ "Bindgen loads libclang with dlopen"
+    assert build_script =~ "-C target-feature=-crt-static"
     assert build_script =~ "rust_host=\"$(rustc -vV | awk '/^host: / {print $2}')\""
     assert build_script =~ "x86_64-unknown-linux-musl) target_arch=\"x86_64\" ;;"
     assert build_script =~ "aarch64-unknown-linux-musl) target_arch=\"aarch64\" ;;"
