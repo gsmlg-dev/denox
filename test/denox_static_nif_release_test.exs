@@ -16,6 +16,28 @@ defmodule Denox.StaticNifReleaseTest do
     assert lib_rs =~ "nif_init"
   end
 
+  test "static NIF builds avoid Rustler's dlopen bootstrap" do
+    cargo_toml = File.read!(Path.join(@repo_root, "native/denox_nif/Cargo.toml"))
+    build_script = File.read!(Path.join(@repo_root, ".github/scripts/build-static-nif.sh"))
+
+    rustler_codegen_init =
+      File.read!(Path.join(@repo_root, "native/denox_nif/vendor/rustler_codegen/src/init.rs"))
+
+    rustler_functions =
+      File.read!(Path.join(@repo_root, "native/denox_nif/vendor/rustler/src/sys/functions.rs"))
+
+    rustler_build = File.read!(Path.join(@repo_root, "native/denox_nif/vendor/rustler/build.rs"))
+
+    assert cargo_toml =~ ~s(static_nif = ["rustler/static_nif"])
+    assert build_script =~ ~s(cargo build --release --features "${feature},static_nif")
+    refute build_script =~ ~s(cargo build --release --features "${feature}")
+    assert rustler_codegen_init =~ "internal_write_static_symbols"
+    assert rustler_codegen_init =~ ~S|#[cfg(all(unix, feature = "static_nif"))]|
+    assert rustler_functions =~ "internal_write_static_symbols"
+    assert rustler_build =~ "write_static_symbols"
+    assert rustler_build =~ "#[link_name"
+  end
+
   test "release workflow publishes Linux musl static NIF archives" do
     release_yml = File.read!(Path.join(@repo_root, ".github/workflows/release.yml"))
 
@@ -72,7 +94,7 @@ defmodule Denox.StaticNifReleaseTest do
     assert build_script =~ "\"${target_arch}\"-*-linux-musl"
     refute build_script =~ "rustc -vV | grep \"host: ${TARGET}\""
     refute build_script =~ "cargo build --release --target"
-    assert build_script =~ "cargo build --release --features \"${feature}\""
+    assert build_script =~ ~s(cargo build --release --features "${feature},static_nif")
     assert build_script =~ "target/release/libdenox_nif.a"
     assert build_script =~ "aarch64-linux-gnu-g++"
     assert build_script =~ "cargo fetch"

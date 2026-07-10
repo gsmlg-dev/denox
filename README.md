@@ -71,7 +71,9 @@ library name:
 ```
 
 The archive exports `denox_nif_nif_init`, which delegates to Rustler's
-generated `nif_init` entrypoint for `Elixir.Denox.Native`.
+generated `nif_init` entrypoint for `Elixir.Denox.Native`. Static release
+builds enable Denox's `static_nif` cargo feature so Rustler initializes from
+the linked OTP `enif_*` symbols instead of dynamic symbol lookup.
 
 After linking Denox into the static OTP build, run this smoke check in an
 application that depends on Denox:

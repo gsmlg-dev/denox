@@ -107,7 +107,7 @@ mkdir -p "${v8_dir}/third_party/icu/common"
 cp "${icu_data}" "${v8_dir}/third_party/icu/common/icudtl.dat"
 
 feature="nif_version_$(printf '%s' "${NIF_VERSION}" | tr '.' '_')"
-cargo build --release --features "${feature}"
+cargo build --release --features "${feature},static_nif"
 
 archive_dir="../../static-nifs/denox_nif-v${VERSION}-nif-${NIF_VERSION}-${TARGET}-static"
 mkdir -p "${archive_dir}"

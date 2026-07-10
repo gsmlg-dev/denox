@@ -29,6 +29,11 @@ ureq = "2"
 nif_version_2_15 = ["rustler/nif_version_2_15"]
 nif_version_2_16 = ["rustler/nif_version_2_16"]
 nif_version_2_17 = ["rustler/nif_version_2_17"]
+static_nif = ["rustler/static_nif"]
+
+[patch.crates-io]
+rustler = { path = "vendor/rustler" }
+rustler_codegen = { path = "vendor/rustler_codegen" }
 
 [profile.dev.package.v8]
 opt-level = 1
